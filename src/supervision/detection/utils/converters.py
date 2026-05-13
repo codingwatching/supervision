@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 import cv2
 import numpy as np
@@ -9,7 +9,7 @@ import numpy.typing as npt
 MIN_POLYGON_POINT_COUNT = 3
 
 
-def xyxy_to_polygons(box: npt.NDArray[np.number]) -> npt.NDArray[np.number]:
+def xyxy_to_polygons(box: npt.NDArray[np.number]) -> npt.NDArray[np.float32]:
     """
     Convert an array of boxes to an array of polygons.
     Retains the input datatype.
@@ -22,7 +22,7 @@ def xyxy_to_polygons(box: npt.NDArray[np.number]) -> npt.NDArray[np.number]:
         An array of polygons (N, 4, 2), where each polygon is
             represented as a list of four coordinates in the format `(x, y)`.
     """
-    polygon = np.zeros((box.shape[0], 4, 2), dtype=box.dtype)
+    polygon = np.zeros((box.shape[0], 4, 2), dtype=np.float32)
     polygon[:, :, 0] = box[:, [0, 2, 2, 0]]
     polygon[:, :, 1] = box[:, [1, 1, 3, 3]]
     return polygon
@@ -49,7 +49,7 @@ def polygon_to_mask(
     return mask
 
 
-def xywh_to_xyxy(xywh: npt.NDArray[np.number]) -> npt.NDArray[np.number]:
+def xywh_to_xyxy(xywh: npt.NDArray[np.number]) -> npt.NDArray[np.float32]:
     """
     Converts bounding box coordinates from `(x, y, width, height)`
     format to `(x_min, y_min, x_max, y_max)` format.
@@ -76,13 +76,13 @@ def xywh_to_xyxy(xywh: npt.NDArray[np.number]) -> npt.NDArray[np.number]:
 
         ```
     """
-    xyxy = xywh.copy()
-    xyxy[:, 2] = xywh[:, 0] + xywh[:, 2]
-    xyxy[:, 3] = xywh[:, 1] + xywh[:, 3]
+    xyxy = np.asarray(xywh, dtype=np.float32).copy()
+    xyxy[:, 2] = xyxy[:, 0] + xyxy[:, 2]
+    xyxy[:, 3] = xyxy[:, 1] + xyxy[:, 3]
     return xyxy
 
 
-def xyxy_to_xywh(xyxy: npt.NDArray[np.number]) -> npt.NDArray[np.number]:
+def xyxy_to_xywh(xyxy: npt.NDArray[np.number]) -> npt.NDArray[np.float32]:
     """
     Converts bounding box coordinates from `(x_min, y_min, x_max, y_max)`
     format to `(x, y, width, height)` format.
@@ -110,13 +110,13 @@ def xyxy_to_xywh(xyxy: npt.NDArray[np.number]) -> npt.NDArray[np.number]:
 
         ```
     """
-    xywh = xyxy.copy()
-    xywh[:, 2] = xyxy[:, 2] - xyxy[:, 0]
-    xywh[:, 3] = xyxy[:, 3] - xyxy[:, 1]
+    xywh = np.asarray(xyxy, dtype=np.float32).copy()
+    xywh[:, 2] = xywh[:, 2] - xywh[:, 0]
+    xywh[:, 3] = xywh[:, 3] - xywh[:, 1]
     return xywh
 
 
-def xcycwh_to_xyxy(xcycwh: npt.NDArray[np.number]) -> npt.NDArray[np.number]:
+def xcycwh_to_xyxy(xcycwh: npt.NDArray[np.number]) -> npt.NDArray[np.float32]:
     """
     Converts bounding box coordinates from `(center_x, center_y, width, height)`
     format to `(x_min, y_min, x_max, y_max)` format.
@@ -144,11 +144,11 @@ def xcycwh_to_xyxy(xcycwh: npt.NDArray[np.number]) -> npt.NDArray[np.number]:
 
         ```
     """
-    xyxy = xcycwh.copy()
-    xyxy[:, 0] = xcycwh[:, 0] - xcycwh[:, 2] / 2
-    xyxy[:, 1] = xcycwh[:, 1] - xcycwh[:, 3] / 2
-    xyxy[:, 2] = xcycwh[:, 0] + xcycwh[:, 2] / 2
-    xyxy[:, 3] = xcycwh[:, 1] + xcycwh[:, 3] / 2
+    xyxy = np.asarray(xcycwh, dtype=np.float32).copy()
+    xyxy[:, 0] = xyxy[:, 0] - xyxy[:, 2] / 2
+    xyxy[:, 1] = xyxy[:, 1] - xyxy[:, 3] / 2
+    xyxy[:, 2] = xyxy[:, 0] + xyxy[:, 2]
+    xyxy[:, 3] = xyxy[:, 1] + xyxy[:, 3]
     return xyxy
 
 
@@ -181,7 +181,7 @@ def xyxy_to_xcycarh(xyxy: npt.NDArray[np.number]) -> npt.NDArray[np.floating]:
 
     """
     if xyxy.size == 0:
-        return np.empty((0, 4), dtype=float)
+        return np.empty((0, 4), dtype=np.float32)
 
     x1, y1, x2, y2 = xyxy.T
     width = x2 - x1
@@ -196,10 +196,10 @@ def xyxy_to_xcycarh(xyxy: npt.NDArray[np.number]) -> npt.NDArray[np.floating]:
         where=height != 0,
     )
     result = np.column_stack((center_x, center_y, aspect_ratio, height))
-    return result.astype(float)
+    return result.astype(np.float32)
 
 
-def mask_to_xyxy(masks: npt.NDArray[np.bool_]) -> npt.NDArray[np.int_]:
+def mask_to_xyxy(masks: npt.NDArray[np.bool_]) -> npt.NDArray[np.int32]:
     """
     Converts a 3D `np.array` of 2D bool masks into a 2D `np.array` of bounding boxes.
 
@@ -211,7 +211,7 @@ def mask_to_xyxy(masks: npt.NDArray[np.bool_]) -> npt.NDArray[np.int_]:
             `(x_min, y_min, x_max, y_max)` for each mask.
     """
     n = masks.shape[0]
-    xyxy = np.zeros((n, 4), dtype=int)
+    xyxy = np.zeros((n, 4), dtype=np.int32)
 
     for i, mask in enumerate(masks):
         rows, cols = np.where(mask)
@@ -546,9 +546,7 @@ def _rle_counts_to_mask(
     num_pixels = height * width
     if len(flat) < num_pixels:
         flat = np.pad(flat, (0, num_pixels - len(flat)))
-    return cast(
-        npt.NDArray[np.bool_], flat[:num_pixels].reshape(height, width, order="F")
-    )
+    return flat[:num_pixels].reshape(height, width, order="F")
 
 
 def rle_to_mask(
@@ -694,13 +692,13 @@ def mask_to_rle(
     assert mask.ndim == 2, "Input mask must be 2D"
     assert mask.size != 0, "Input mask cannot be empty"
 
-    counts: list[int] = cast(list[int], _mask_to_rle_counts(mask).tolist())
+    counts = [int(count) for count in _mask_to_rle_counts(mask).tolist()]
     if compressed:
         return _base48_encode(_delta_encode(counts))
     return counts
 
 
-def polygon_to_xyxy(polygon: npt.NDArray[np.number]) -> npt.NDArray[np.number]:
+def polygon_to_xyxy(polygon: npt.NDArray[np.number]) -> npt.NDArray[np.float32]:
     """
     Converts a polygon represented by a NumPy array into a bounding box.
 
@@ -714,4 +712,4 @@ def polygon_to_xyxy(polygon: npt.NDArray[np.number]) -> npt.NDArray[np.number]:
     """
     x_min, y_min = np.min(polygon, axis=0)
     x_max, y_max = np.max(polygon, axis=0)
-    return np.array([x_min, y_min, x_max, y_max])
+    return np.array([x_min, y_min, x_max, y_max], dtype=np.float32)

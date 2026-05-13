@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -323,9 +323,10 @@ def _rle_resize(
     col_cache: dict[int, list[int]] = {}
     scaled_cols = []
     for src_c in col_map:
-        if src_c not in col_cache:
-            col_cache[src_c] = _rle_scale_col(per_col[src_c], crop_h, row_map)
-        scaled_cols.append(col_cache[src_c])
+        src_c_int = int(src_c)
+        if src_c_int not in col_cache:
+            col_cache[src_c_int] = _rle_scale_col(per_col[src_c_int], crop_h, row_map)
+        scaled_cols.append(col_cache[src_c_int])
 
     return _rle_join_cols(scaled_cols, new_total)
 
@@ -640,7 +641,7 @@ class CompactMask:
     def __iter__(self) -> Iterator[npt.NDArray[np.bool_]]:
         """Iterate over masks as dense ``(H, W)`` boolean arrays."""
         for mask_idx in range(len(self)):
-            yield self[mask_idx]
+            yield cast(npt.NDArray[np.bool_], self[mask_idx])
 
     @property
     def shape(self) -> tuple[int, int, int]:
@@ -790,7 +791,7 @@ class CompactMask:
         """
         if axis == (1, 2):
             return self.area
-        return self.to_dense().sum(axis=axis)
+        return cast(npt.NDArray[Any] | int, self.to_dense().sum(axis=axis))
 
     def __getitem__(
         self,

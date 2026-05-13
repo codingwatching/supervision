@@ -5,13 +5,13 @@ import os
 import random
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import cv2
 import numpy as np
 import numpy.typing as npt
-from deprecate import deprecated, void
 
+from deprecate import deprecated, void
 from supervision.detection.core import Detections
 from supervision.detection.utils.converters import mask_to_polygons
 from supervision.detection.utils.converters import (
@@ -26,21 +26,21 @@ from supervision.detection.utils.polygons import (
 )
 
 
-@deprecated(target=_mask_to_rle, deprecated_in="0.28.0", remove_in="0.30.0")  # type: ignore[untyped-decorator]
+@deprecated(target=_mask_to_rle, deprecated_in="0.28.0", remove_in="0.30.0")
 def mask_to_rle(
     mask: npt.NDArray[np.bool_], compressed: bool = False
 ) -> list[int] | str:
     """Deprecated. Use `supervision.detection.utils.converters.mask_to_rle`."""
-    return void(mask, compressed)  # type: ignore[no-any-return]
+    return cast(list[int] | str, void(mask, compressed))
 
 
-@deprecated(target=_rle_to_mask, deprecated_in="0.28.0", remove_in="0.30.0")  # type: ignore[untyped-decorator]
+@deprecated(target=_rle_to_mask, deprecated_in="0.28.0", remove_in="0.30.0")
 def rle_to_mask(
     rle: npt.NDArray[np.integer[Any]] | list[int] | str | bytes,
     resolution_wh: tuple[int, int],
 ) -> npt.NDArray[np.bool_]:
     """Deprecated. Use `supervision.detection.utils.converters.rle_to_mask`."""
-    return void(rle, resolution_wh)
+    return cast(npt.NDArray[np.bool_], void(rle, resolution_wh))
 
 
 if TYPE_CHECKING:
@@ -60,7 +60,9 @@ def approximate_mask_with_polygons(
     minimum_detection_area = min_image_area_percentage * image_area
     maximum_detection_area = max_image_area_percentage * image_area
 
-    polygons = mask_to_polygons(mask=mask)
+    polygons: list[npt.NDArray[np.number]] = cast(
+        list[npt.NDArray[np.number]], mask_to_polygons(mask=mask)
+    )
     if len(polygons) == 1:
         polygons = filter_polygons_by_area(
             polygons=polygons, min_area=None, max_area=maximum_detection_area
@@ -118,8 +120,13 @@ def map_detections_class_id(
     detections_copy = copy.deepcopy(detections)
 
     if len(detections) > 0:
-        detections_copy.class_id = np.vectorize(source_to_target_mapping.get)(
-            detections_copy.class_id
+        assert detections_copy.class_id is not None
+        detections_copy.class_id = np.array(
+            [
+                source_to_target_mapping[int(class_id)]
+                for class_id in detections_copy.class_id
+            ],
+            dtype=np.int32,
         )
 
     return detections_copy

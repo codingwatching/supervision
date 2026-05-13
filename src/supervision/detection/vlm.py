@@ -6,7 +6,7 @@ import io
 import json
 import re
 from enum import Enum
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -225,22 +225,35 @@ def from_paligemma(
     pattern = re.compile(
         r"(?<!<loc\d{4}>)<loc(\d{4})><loc(\d{4})><loc(\d{4})><loc(\d{4})> ([\w\s\-]+)"
     )
-    matches = pattern.findall(result)
-    matches = np.array(matches) if matches else np.empty((0, 5))
+    matches_list = pattern.findall(result)
+    matches: npt.NDArray[np.str_] = (
+        np.asarray(matches_list, dtype=str)
+        if matches_list
+        else np.empty((0, 5), dtype=str)
+    )
 
     if matches.shape[0] == 0:
-        return np.empty((0, 4)), None, np.empty(0, dtype=str)
+        return (
+            np.empty((0, 4), dtype=np.float32),
+            None,
+            np.empty((0,), dtype=str),
+        )
 
-    xyxy, class_name = matches[:, [1, 0, 3, 2]], matches[:, 4]
-    xyxy = xyxy.astype(int) / 1024 * np.array([w, h, w, h])
-    class_name = np.char.strip(class_name.astype(str))
-    class_id = None
+    xyxy = np.asarray(matches[:, [1, 0, 3, 2]], dtype=np.float32)
+    xyxy = np.asarray(
+        xyxy * np.array([w / 1024, h / 1024, w / 1024, h / 1024], dtype=np.float32),
+        dtype=np.float32,
+    )
+    class_name: npt.NDArray[np.str_] = np.char.strip(matches[:, 4])
+    class_id: npt.NDArray[np.int32] | None = None
 
     if classes is not None:
         mask = np.array([name in classes for name in class_name], dtype=bool)
         xyxy = xyxy[mask]
         class_name = class_name[mask]
-        class_id = np.array([classes.index(name) for name in class_name])
+        class_id = np.array(
+            [classes.index(name) for name in class_name], dtype=np.int32
+        )
 
     return xyxy, class_id, class_name
 
@@ -345,39 +358,52 @@ def from_qwen_2_5_vl(
                 data = ast.literal_eval(text)
             except (ValueError, SyntaxError, TypeError):
                 return (
-                    np.empty((0, 4)),
-                    np.empty((0,), dtype=int),
+                    np.empty((0, 4), dtype=np.float32),
+                    np.empty((0,), dtype=np.int32),
                     np.empty((0,), dtype=str),
                 )
 
     if not isinstance(data, list):
-        return (np.empty((0, 4)), np.empty((0,), dtype=int), np.empty((0,), dtype=str))
+        return (
+            np.empty((0, 4), dtype=np.float32),
+            np.empty((0,), dtype=np.int32),
+            np.empty((0,), dtype=str),
+        )
 
-    boxes_list = []
-    labels_list = []
+    boxes_list: list[list[float]] = []
+    labels_list: list[str] = []
 
     for item in data:
         if "bbox_2d" not in item or "label" not in item:
             continue
-        boxes_list.append(item["bbox_2d"])
-        labels_list.append(item["label"])
+        box = item["bbox_2d"]
+        boxes_list.append([float(value) for value in box])
+        labels_list.append(str(item["label"]))
 
     if not boxes_list:
-        return (np.empty((0, 4)), np.empty((0,), dtype=int), np.empty((0,), dtype=str))
+        return (
+            np.empty((0, 4), dtype=np.float32),
+            np.empty((0,), dtype=np.int32),
+            np.empty((0,), dtype=str),
+        )
 
-    xyxy = np.array(boxes_list, dtype=float)
-    class_name = np.array(labels_list, dtype=str)
+    xyxy = np.asarray(boxes_list, dtype=np.float32)
+    class_name = np.asarray(labels_list, dtype=str)
 
-    xyxy = xyxy / [in_w, in_h, in_w, in_h]
-    xyxy = xyxy * [out_w, out_h, out_w, out_h]
+    scale = np.array(
+        [out_w / in_w, out_h / in_h, out_w / in_w, out_h / in_h], dtype=np.float32
+    )
+    xyxy = np.asarray(xyxy * scale, dtype=np.float32)
 
-    class_id = None
+    class_id: npt.NDArray[np.int32] | None = None
 
     if classes is not None:
         mask = np.array([label in classes for label in class_name], dtype=bool)
         xyxy = xyxy[mask]
         class_name = class_name[mask]
-        class_id = np.array([classes.index(label) for label in class_name], dtype=int)
+        class_id = np.array(
+            [classes.index(label) for label in class_name], dtype=np.int32
+        )
 
     return xyxy, class_id, class_name
 
@@ -448,12 +474,13 @@ def from_deepseek_vl_2(
             f"and det tags ({len(detection_segments)}) in the result must be equal."
         )
 
-    xyxy, class_name_list = [], []
+    xyxy_list: list[list[float]] = []
+    class_name_list: list[str] = []
     for label, detection_blob in zip(label_segments, detection_segments):
         current_class_name = label.strip()
         for box in re.findall(r"\[(.*?)\]", detection_blob):
             x1, y1, x2, y2 = map(float, box.strip("[]").split(","))
-            xyxy.append(
+            xyxy_list.append(
                 [
                     (x1 / 999 * width),
                     (y1 / 999 * height),
@@ -463,18 +490,20 @@ def from_deepseek_vl_2(
             )
             class_name_list.append(current_class_name)
 
-    xyxy = np.array(xyxy, dtype=np.float32)
-    class_name = np.array(class_name_list)
+    xyxy = np.asarray(xyxy_list, dtype=np.float32)
+    class_name = np.asarray(class_name_list, dtype=str)
 
     if classes is not None:
         mask = np.array([name in classes for name in class_name], dtype=bool)
         xyxy = xyxy[mask]
         class_name = class_name[mask]
-        class_id = np.array([classes.index(name) for name in class_name])
+        class_id = np.array(
+            [classes.index(name) for name in class_name], dtype=np.int32
+        )
     else:
         unique_classes = sorted(list(set(class_name)))
         class_to_id = {name: i for i, name in enumerate(unique_classes)}
-        class_id = np.array([class_to_id[name] for name in class_name])
+        class_id = np.array([class_to_id[name] for name in class_name], dtype=np.int32)
 
     return xyxy, class_id, class_name
 
@@ -524,13 +553,15 @@ def from_florence_2(
     if task == "<OCR_WITH_REGION>":
         xyxyxyxy = np.array(result["quad_boxes"], dtype=np.float32)
         xyxyxyxy = xyxyxyxy.reshape(-1, 4, 2)
-        xyxy = np.array([polygon_to_xyxy(polygon) for polygon in xyxyxyxy])
-        labels = np.array(result["labels"])
+        xyxy = np.asarray(
+            [polygon_to_xyxy(polygon) for polygon in xyxyxyxy], dtype=np.float32
+        )
+        labels = np.asarray(result["labels"], dtype=str)
         return xyxy, labels, None, xyxyxyxy
 
     if task in ["<REFERRING_EXPRESSION_SEGMENTATION>", "<REGION_TO_SEGMENTATION>"]:
-        xyxy_list = []
-        masks_list = []
+        xyxy_list: list[npt.NDArray[np.float32]] = []
+        masks_list: list[npt.NDArray[np.bool_]] = []
         for polygons_of_same_class in result["polygons"]:
             for polygon in polygons_of_same_class:
                 polygon = np.reshape(polygon, (-1, 2)).astype(np.int32)
@@ -541,13 +572,13 @@ def from_florence_2(
             # per-class labels also provided, but they are ["", "", "", ...]
             # when we figure out how to set class names, we can do
             # zip(result["labels"], result["polygons"])
-        xyxy = np.array(xyxy_list, dtype=np.float32)
-        masks = np.array(masks_list)
+        xyxy = np.asarray(xyxy_list, dtype=np.float32)
+        masks = np.asarray(masks_list, dtype=bool)
         return xyxy, None, masks, None
 
     if task == "<OPEN_VOCABULARY_DETECTION>":
         xyxy = np.array(result["bboxes"], dtype=np.float32)
-        labels = np.array(result["bboxes_labels"])
+        labels = np.asarray(result["bboxes_labels"], dtype=str)
         # Also has "polygons" and "polygons_labels", but they don't seem to be used
         return xyxy, labels, None, None
 
@@ -557,7 +588,12 @@ def from_florence_2(
         )
 
         if result == "No object detected.":
-            return np.empty((0, 4), dtype=np.float32), np.array([]), None, None
+            return (
+                np.empty((0, 4), dtype=np.float32),
+                np.empty((0,), dtype=str),
+                None,
+                None,
+            )
 
         pattern = re.compile(r"<loc_(\d+)><loc_(\d+)><loc_(\d+)><loc_(\d+)>")
         match = pattern.search(result)
@@ -566,10 +602,10 @@ def from_florence_2(
         )
 
         w, h = validate_resolution(resolution_wh)
-        xyxy = np.array([match.groups()], dtype=np.float32)
+        xyxy = np.asarray([match.groups()], dtype=np.float32)
         xyxy *= np.array([w, h, w, h]) / 1000
         result_string = result[: match.start()]
-        labels = np.array([result_string])
+        labels = np.asarray([result_string], dtype=str)
         return xyxy, labels, None, None
 
     raise RuntimeError(f"Unimplemented task: {task}")
@@ -626,37 +662,39 @@ def from_google_gemini_2_0(
     try:
         data = json.loads(result)
     except json.JSONDecodeError:
-        return np.empty((0, 4)), None, np.empty((0,), dtype=str)
+        return np.empty((0, 4), dtype=np.float32), None, np.empty((0,), dtype=str)
 
-    labels = []
-    xyxy = []
+    labels: list[str] = []
+    xyxy_list: list[list[float]] = []
 
     for item in data:
         if "box_2d" not in item or "label" not in item:
             continue
-        labels.append(item["label"])
+        labels.append(str(item["label"]))
         box = item["box_2d"]
         # Gemini bbox order is [y_min, x_min, y_max, x_max]
-        xyxy.append([box[1], box[0], box[3], box[2]])
+        xyxy_list.append([float(box[1]), float(box[0]), float(box[3]), float(box[2])])
 
-    if len(xyxy) == 0:
-        return np.empty((0, 4)), None, np.empty((0,), dtype=str)
+    if len(xyxy_list) == 0:
+        return np.empty((0, 4), dtype=np.float32), None, np.empty((0,), dtype=str)
 
-    xyxy = denormalize_boxes(
-        np.array(xyxy, dtype=np.float64),
+    xyxy_array: npt.NDArray[np.float32] = denormalize_boxes(
+        np.asarray(xyxy_list, dtype=np.float64),
         resolution_wh=(w, h),
         normalization_factor=1000,
     )
-    class_name = np.array(labels)
-    class_id = None
+    class_name = np.asarray(labels, dtype=str)
+    class_id: npt.NDArray[np.int32] | None = None
 
     if classes is not None:
         mask = np.array([name in classes for name in class_name], dtype=bool)
-        xyxy = xyxy[mask]
+        xyxy_array = xyxy_array[mask]
         class_name = class_name[mask]
-        class_id = np.array([classes.index(name) for name in class_name])
+        class_id = np.array(
+            [classes.index(name) for name in class_name], dtype=np.int32
+        )
 
-    return xyxy, class_id, class_name
+    return xyxy_array, class_id, class_name
 
 
 def from_google_gemini_2_5(
@@ -715,26 +753,26 @@ def from_google_gemini_2_5(
         data = json.loads(result)
     except json.JSONDecodeError:
         return (
-            np.empty((0, 4)),
-            np.array([], dtype=int),
+            np.empty((0, 4), dtype=np.float32),
+            np.array([], dtype=np.int32),
             np.array([], dtype=str),
-            np.array([], dtype=float),
+            np.array([], dtype=np.float32),
             None,
         )
 
-    boxes_list: list[Any] = []
+    boxes_list: list[list[float]] = []
     labels_list: list[str] = []
     confidence_list: list[float] | None = []
-    masks_list: list[npt.NDArray[Any]] | None = []
+    masks_list: list[npt.NDArray[np.bool_]] | None = []
 
     for item in data:
         if "box_2d" not in item or "label" not in item:
             continue
-        labels_list.append(item["label"])
+        labels_list.append(str(item["label"]))
         box = item["box_2d"]
         # Gemini bbox order is [y_min, x_min, y_max, x_max]
         absolute_bbox = denormalize_boxes(
-            np.array([[box[1], box[0], box[3], box[2]]]).astype(np.float64),
+            np.asarray([[box[1], box[0], box[3], box[2]]], dtype=np.float64),
             resolution_wh=(w, h),
             normalization_factor=1000,
         )[0]
@@ -758,11 +796,11 @@ def from_google_gemini_2_5(
                 bbox_width = x_max - x_min
 
                 if bbox_height > 0 and bbox_width > 0:
-                    mask_img = mask_img.resize(
+                    resized_mask_img = mask_img.resize(
                         (bbox_width, bbox_height), resample=Image.Resampling.BILINEAR
                     )
                     np_mask: npt.NDArray[np.bool_] = np.zeros((h, w), dtype=bool)
-                    np_mask[y_min:y_max, x_min:x_max] = np.array(mask_img) > 0
+                    np_mask[y_min:y_max, x_min:x_max] = np.asarray(resized_mask_img) > 0
                     masks_list.append(np_mask)
                 else:
                     masks_list.append(np.zeros((h, w), dtype=bool))
@@ -777,22 +815,24 @@ def from_google_gemini_2_5(
 
     if not boxes_list:
         return (
-            np.empty((0, 4)),
-            np.array([], dtype=int),
+            np.empty((0, 4), dtype=np.float32),
+            np.array([], dtype=np.int32),
             np.array([], dtype=str),
-            np.array([], dtype=float),
+            np.array([], dtype=np.float32),
             None,
         )
 
-    xyxy = np.array(boxes_list, dtype=float)
-    class_name = np.array(labels_list)
-    class_id: npt.NDArray[Any]
+    xyxy = np.asarray(boxes_list, dtype=np.float32)
+    class_name = np.asarray(labels_list, dtype=str)
+    class_id: npt.NDArray[np.int32]
 
     if classes is not None:
         mask = np.array([name in classes for name in class_name], dtype=bool)
         xyxy = xyxy[mask]
         class_name = class_name[mask]
-        class_id = np.array([classes.index(name) for name in class_name])
+        class_id = np.array(
+            [classes.index(name) for name in class_name], dtype=np.int32
+        )
         if masks_list is not None:
             masks_list = [m for m, keep in zip(masks_list, mask) if keep]
 
@@ -804,9 +844,11 @@ def from_google_gemini_2_5(
         class_id = np.array([label_to_id[name] for name in class_name])
 
     confidence = (
-        np.array(confidence_list, dtype=float) if confidence_list is not None else None
+        np.array(confidence_list, dtype=np.float32)
+        if confidence_list is not None
+        else None
     )
-    masks = np.array(masks_list) if masks_list is not None else None
+    masks = np.array(masks_list, dtype=bool) if masks_list is not None else None
 
     return (
         xyxy,
@@ -820,7 +862,7 @@ def from_google_gemini_2_5(
 def from_moondream(
     result: dict[str, Any],
     resolution_wh: tuple[int, int],
-) -> npt.NDArray[Any]:
+) -> npt.NDArray[np.float32]:
     """
     Parse and scale bounding boxes from moondream JSON output.
 
@@ -856,9 +898,9 @@ def from_moondream(
         )
 
     if "objects" not in result or not isinstance(result["objects"], list):
-        return np.empty((0, 4), dtype=float)
+        return np.empty((0, 4), dtype=np.float32)
 
-    xyxy = []
+    xyxy: list[list[float]] = []
 
     for item in result["objects"]:
         if not all(k in item for k in ["x_min", "y_min", "x_max", "y_max"]):
@@ -872,12 +914,9 @@ def from_moondream(
         xyxy.append([x_min, y_min, x_max, y_max])
 
     if len(xyxy) == 0:
-        return cast(npt.NDArray[Any], np.empty((0, 4)))
+        return np.empty((0, 4), dtype=np.float32)
 
-    return cast(
-        npt.NDArray[Any],
-        denormalize_boxes(
-            np.array(xyxy).astype(np.float64),
-            resolution_wh=(w, h),
-        ),
+    return denormalize_boxes(
+        np.asarray(xyxy, dtype=np.float64),
+        resolution_wh=(w, h),
     )

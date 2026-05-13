@@ -738,7 +738,7 @@ def box_non_max_suppression(
     boxes = predictions[:, :4]
     categories = predictions[:, 5]
     ious = box_iou_batch(boxes, boxes, overlap_metric)
-    ious = ious - np.eye(rows)
+    ious = ious - np.eye(rows, dtype=np.float32)
 
     keep = np.ones(rows, dtype=bool)
 
@@ -755,8 +755,8 @@ def box_non_max_suppression(
 
 
 def _group_overlapping_masks(
-    predictions: npt.NDArray[np.float64],
-    masks: npt.NDArray[np.float64],
+    predictions: npt.NDArray[np.floating[Any]],
+    masks: npt.NDArray[Any],
     iou_threshold: float = 0.5,
     overlap_metric: OverlapMetric = OverlapMetric.IOU,
 ) -> list[list[int]]:
@@ -857,7 +857,7 @@ def mask_non_max_merge(
         masks = resize_masks(np.asarray(masks), mask_dimension)
     else:
         masks = resize_masks(masks, mask_dimension)
-    masks_resized = masks
+    masks_resized: npt.NDArray[Any] = masks
 
     if predictions.shape[1] == 5:
         return _group_overlapping_masks(

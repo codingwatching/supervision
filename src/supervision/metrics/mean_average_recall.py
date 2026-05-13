@@ -9,6 +9,7 @@ import numpy.typing as npt
 from matplotlib import pyplot as plt
 
 from supervision.config import ORIENTED_BOX_COORDINATES
+from supervision.detection.compact_mask import CompactMask
 from supervision.detection.core import Detections
 from supervision.detection.utils.iou_and_nms import (
     box_iou_batch,
@@ -169,15 +170,15 @@ class MeanAverageRecallResult:
 
         if self.small_objects is not None:
             small_objects_df = self.small_objects.to_pandas()
-            for key, value in small_objects_df.items():
+            for key, value in small_objects_df.iloc[0].items():
                 pandas_data[f"small_objects_{key}"] = value
         if self.medium_objects is not None:
             medium_objects_df = self.medium_objects.to_pandas()
-            for key, value in medium_objects_df.items():
+            for key, value in medium_objects_df.iloc[0].items():
                 pandas_data[f"medium_objects_{key}"] = value
         if self.large_objects is not None:
             large_objects_df = self.large_objects.to_pandas()
-            for key, value in large_objects_df.items():
+            for key, value in large_objects_df.iloc[0].items():
                 pandas_data[f"large_objects_{key}"] = value
 
         return pd.DataFrame(pandas_data, index=[0])
@@ -479,7 +480,15 @@ class MeanAverageRecall(Metric):
         npt.NDArray[np.float64],
         npt.NDArray[np.int32],
     ]:
-        unique_classes, class_counts = np.unique(true_class_ids, return_counts=True)
+        unique_classes_raw, class_counts_raw = np.unique(
+            true_class_ids, return_counts=True
+        )
+        unique_classes: npt.NDArray[np.int32] = cast(
+            npt.NDArray[np.int32], np.asarray(unique_classes_raw, dtype=np.int32)
+        )
+        class_counts: npt.NDArray[np.int32] = cast(
+            npt.NDArray[np.int32], np.asarray(class_counts_raw, dtype=np.int32)
+        )
 
         recalls_at_k = []
         for max_detections in self.max_detections:
@@ -496,8 +505,8 @@ class MeanAverageRecall(Metric):
             recalls_at_k.append(recall_per_class)
 
         # Shape: KxCxTh -> KxC
-        recalls_at_k = np.array(recalls_at_k)
-        average_recall_per_class = np.mean(recalls_at_k, axis=2)
+        recalls_at_k_array = np.array(recalls_at_k, dtype=np.float32)
+        average_recall_per_class = np.mean(recalls_at_k_array, axis=2)
 
         # Shape: KxC -> K
         recall_scores = np.mean(average_recall_per_class, axis=1)
@@ -633,7 +642,10 @@ class MeanAverageRecall(Metric):
             return result_boxes
         if self._metric_target == MetricTarget.MASKS:
             if detections.mask is not None:
-                result_masks: npt.NDArray[np.bool_] = detections.mask
+                if isinstance(detections.mask, CompactMask):
+                    result_masks: npt.NDArray[np.bool_] = detections.mask.to_dense()
+                else:
+                    result_masks = detections.mask
                 return result_masks
             return self._make_empty_content()
         if self._metric_target == MetricTarget.ORIENTED_BOUNDING_BOXES:

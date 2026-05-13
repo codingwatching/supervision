@@ -113,7 +113,7 @@ def coco_annotations_to_masks(
 
         masks.append(object_mask)
 
-    return np.asarray(masks, dtype=bool)
+    return cast(npt.NDArray[np.bool_], np.asarray(masks, dtype=bool))
 
 
 def coco_annotations_to_detections(
@@ -125,14 +125,16 @@ def coco_annotations_to_detections(
     if not image_annotations:
         return Detections.empty()
 
-    class_ids = [
+    class_ids: list[int] = [
         image_annotation["category_id"] for image_annotation in image_annotations
     ]
-    xyxy = [image_annotation["bbox"] for image_annotation in image_annotations]
-    xyxy = np.asarray(xyxy, dtype=np.float32)
+    xyxy = np.asarray(
+        [image_annotation["bbox"] for image_annotation in image_annotations],
+        dtype=np.float32,
+    )
     xyxy[:, 2:4] += xyxy[:, 0:2]
 
-    data: dict[str, npt.NDArray[np.generic]] = {}
+    data: dict[str, Any] = {}
     if use_iscrowd:
         iscrowd = [
             image_annotation["iscrowd"] for image_annotation in image_annotations
@@ -166,6 +168,8 @@ def detections_to_coco_annotations(
     for xyxy, mask, _, class_id, _, data in detections:
         if class_id is None:
             raise ValueError("Detections must include class_id for COCO export.")
+        if mask is not None:
+            mask = cast(npt.NDArray[np.bool_], np.asarray(mask, dtype=bool))
         box_width, box_height = xyxy[2] - xyxy[0], xyxy[3] - xyxy[1]
         segmentation: Union[list[list[float]], dict[str, list[int]]] = []
         if mask is not None:

@@ -60,6 +60,22 @@ from supervision.utils.internal import get_instance_variables, warn_deprecated
 from supervision.validators import validate_detections_fields, validate_resolution
 
 
+def _optional_array_equal(left: Any | None, right: Any | None) -> bool:
+    if left is None or right is None:
+        return left is None and right is None
+    return np.array_equal(left, right)
+
+
+def _to_dense_mask(
+    mask: npt.NDArray[np.bool_] | CompactMask | None,
+) -> npt.NDArray[np.bool_] | None:
+    if mask is None:
+        return None
+    if isinstance(mask, CompactMask):
+        return mask.to_dense()
+    return mask
+
+
 @dataclass
 class Detections:
     """
@@ -149,12 +165,12 @@ class Detections:
             as the video name, camera parameters, timestamp, or other global metadata.
     """  # noqa: E501 // docs
 
-    xyxy: npt.NDArray[np.generic]
-    mask: npt.NDArray[np.generic] | CompactMask | None = None
-    confidence: npt.NDArray[np.generic] | None = None
-    class_id: npt.NDArray[np.generic] | None = None
-    tracker_id: npt.NDArray[np.generic] | None = None
-    data: dict[str, npt.NDArray[np.generic] | list[Any]] = field(default_factory=dict)
+    xyxy: npt.NDArray[np.float32]
+    mask: npt.NDArray[np.bool_] | CompactMask | None = None
+    confidence: npt.NDArray[np.float32] | None = None
+    class_id: npt.NDArray[np.int32] | None = None
+    tracker_id: npt.NDArray[np.int32] | None = None
+    data: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -177,12 +193,12 @@ class Detections:
         self,
     ) -> Iterator[
         tuple[
-            npt.NDArray[np.generic],
-            npt.NDArray[np.generic] | None,
-            np.generic | None,
-            np.generic | None,
-            np.generic | None,
-            dict[str, npt.NDArray[np.generic] | list[Any]],
+            npt.NDArray[np.float32],
+            npt.NDArray[np.bool_] | None,
+            np.float32 | None,
+            np.int32 | None,
+            np.int32 | None,
+            dict[str, Any],
         ]
     ]:
         """
@@ -190,9 +206,14 @@ class Detections:
         `(xyxy, mask, confidence, class_id, tracker_id, data)` for each detection.
         """
         for i in range(len(self.xyxy)):
+            mask = (
+                cast(npt.NDArray[np.bool_], self.mask[i])
+                if self.mask is not None
+                else None
+            )
             yield (
                 self.xyxy[i],
-                self.mask[i] if self.mask is not None else None,
+                mask,
                 self.confidence[i] if self.confidence is not None else None,
                 self.class_id[i] if self.class_id is not None else None,
                 self.tracker_id[i] if self.tracker_id is not None else None,
@@ -205,10 +226,10 @@ class Detections:
         return all(
             [
                 np.array_equal(self.xyxy, other.xyxy),
-                np.array_equal(self.mask, other.mask),
-                np.array_equal(self.class_id, other.class_id),
-                np.array_equal(self.confidence, other.confidence),
-                np.array_equal(self.tracker_id, other.tracker_id),
+                _optional_array_equal(self.mask, other.mask),
+                _optional_array_equal(self.class_id, other.class_id),
+                _optional_array_equal(self.confidence, other.confidence),
+                _optional_array_equal(self.tracker_id, other.tracker_id),
                 is_data_equal(self.data, other.data),
                 is_metadata_equal(self.metadata, other.metadata),
             ]
@@ -299,10 +320,11 @@ class Detections:
 
         if hasattr(ultralytics_results, "boxes") and ultralytics_results.boxes is None:
             masks = extract_ultralytics_masks(ultralytics_results)
+            assert masks is not None
             return cls(
-                xyxy=mask_to_xyxy(masks),
+                xyxy=np.asarray(mask_to_xyxy(masks), dtype=np.float32),
                 mask=masks,
-                class_id=np.arange(len(ultralytics_results)),
+                class_id=np.arange(len(ultralytics_results), dtype=np.int32),
             )
 
         if (
@@ -439,9 +461,9 @@ class Detections:
             return cls.empty()
 
         return cls(
-            xyxy=np.array(deepsparse_results.boxes[0]),
-            confidence=np.array(deepsparse_results.scores[0]),
-            class_id=np.array(deepsparse_results.labels[0]).astype(float).astype(int),
+            xyxy=np.asarray(deepsparse_results.boxes[0], dtype=np.float32),
+            confidence=np.asarray(deepsparse_results.scores[0], dtype=np.float32),
+            class_id=np.asarray(deepsparse_results.labels[0], dtype=np.int32),
         )
 
     @classmethod
@@ -472,11 +494,13 @@ class Detections:
         """
 
         return cls(
-            xyxy=mmdet_results.pred_instances.bboxes.cpu().numpy(),
-            confidence=mmdet_results.pred_instances.scores.cpu().numpy(),
-            class_id=mmdet_results.pred_instances.labels.cpu().numpy().astype(int),
+            xyxy=mmdet_results.pred_instances.bboxes.cpu().numpy().astype(np.float32),
+            confidence=mmdet_results.pred_instances.scores.cpu()
+            .numpy()
+            .astype(np.float32),
+            class_id=mmdet_results.pred_instances.labels.cpu().numpy().astype(np.int32),
             mask=(
-                mmdet_results.pred_instances.masks.cpu().numpy()
+                mmdet_results.pred_instances.masks.cpu().numpy().astype(bool)
                 if "masks" in mmdet_results.pred_instances
                 else None
             ),
@@ -597,17 +621,23 @@ class Detections:
         """
 
         return cls(
-            xyxy=detectron2_results["instances"].pred_boxes.tensor.cpu().numpy(),
-            confidence=detectron2_results["instances"].scores.cpu().numpy(),
+            xyxy=detectron2_results["instances"]
+            .pred_boxes.tensor.cpu()
+            .numpy()
+            .astype(np.float32),
+            confidence=detectron2_results["instances"]
+            .scores.cpu()
+            .numpy()
+            .astype(np.float32),
             mask=(
-                detectron2_results["instances"].pred_masks.cpu().numpy()
+                detectron2_results["instances"].pred_masks.cpu().numpy().astype(bool)
                 if hasattr(detectron2_results["instances"], "pred_masks")
                 else None
             ),
             class_id=detectron2_results["instances"]
             .pred_classes.cpu()
             .numpy()
-            .astype(int),
+            .astype(np.int32),
         )
 
     @classmethod
@@ -650,7 +680,7 @@ class Detections:
 
         if np.asarray(xyxy).shape[0] == 0:
             empty_detection = cls.empty()
-            empty_detection.data = {CLASS_NAME_DATA_FIELD: np.empty(0)}
+            empty_detection.data = {CLASS_NAME_DATA_FIELD: np.empty(0, dtype=str)}
             return empty_detection
 
         return cls(
@@ -695,8 +725,12 @@ class Detections:
             sam_result, key=lambda x: x["area"], reverse=True
         )
 
-        xywh = np.array([mask["bbox"] for mask in sorted_generated_masks])
-        mask = np.array([mask["segmentation"] for mask in sorted_generated_masks])
+        xywh = np.array(
+            [mask["bbox"] for mask in sorted_generated_masks], dtype=np.float32
+        )
+        mask = np.array(
+            [mask["segmentation"] for mask in sorted_generated_masks], dtype=bool
+        )
 
         if np.asarray(xywh).shape[0] == 0:
             return cls.empty()
@@ -826,7 +860,7 @@ class Detections:
             xyxy=xyxy.astype(np.float32),
             mask=masks_np,
             confidence=np.array(confidences, dtype=np.float32),
-            class_id=np.array(class_ids, dtype=int),
+            class_id=np.array(class_ids, dtype=np.int32),
         )
 
     @classmethod
@@ -911,9 +945,9 @@ class Detections:
             return Detections.empty()
 
         return cls(
-            xyxy=np.array(xyxy),
-            class_id=np.array(class_ids),
-            confidence=np.array(confidences),
+            xyxy=np.array(xyxy, dtype=np.float32),
+            class_id=np.array(class_ids, dtype=np.int32),
+            confidence=np.array(confidences, dtype=np.float32),
         )
 
     @classmethod
@@ -953,9 +987,9 @@ class Detections:
             return cls.empty()
 
         return cls(
-            xyxy=paddledet_result["bbox"][:, 2:6],
-            confidence=paddledet_result["bbox"][:, 1],
-            class_id=paddledet_result["bbox"][:, 0].astype(int),
+            xyxy=np.asarray(paddledet_result["bbox"][:, 2:6], dtype=np.float32),
+            confidence=np.asarray(paddledet_result["bbox"][:, 1], dtype=np.float32),
+            class_id=np.asarray(paddledet_result["bbox"][:, 0], dtype=np.int32),
         )
 
     @classmethod
@@ -1875,17 +1909,15 @@ class Detections:
         if vlm == VLM.PALIGEMMA:
             assert isinstance(result, str)
             xyxy, class_id, class_name = from_paligemma(result, **kwargs)
-            data: dict[str, npt.NDArray[np.generic] | list[Any]] = {
-                CLASS_NAME_DATA_FIELD: class_name,
-            }
+            data: dict[str, Any] = {CLASS_NAME_DATA_FIELD: class_name}
             return cls(xyxy=xyxy, class_id=class_id, data=data)
 
         if vlm == VLM.QWEN_2_5_VL:
             assert isinstance(result, str)
             xyxy, class_id, class_name = from_qwen_2_5_vl(result, **kwargs)
             data = {CLASS_NAME_DATA_FIELD: class_name}
-            confidence_arr: npt.NDArray[np.floating[Any]] = np.ones(
-                len(xyxy), dtype=float
+            confidence_arr: npt.NDArray[np.float32] = np.ones(
+                len(xyxy), dtype=np.float32
             )
             return cls(
                 xyxy=xyxy, class_id=class_id, confidence=confidence_arr, data=data
@@ -1895,7 +1927,7 @@ class Detections:
             assert isinstance(result, str)
             xyxy, class_id, class_name = from_qwen_3_vl(result, **kwargs)
             data = {CLASS_NAME_DATA_FIELD: class_name}
-            confidence_arr = np.ones(len(xyxy), dtype=float)
+            confidence_arr = np.ones(len(xyxy), dtype=np.float32)
             return cls(
                 xyxy=xyxy, class_id=class_id, confidence=confidence_arr, data=data
             )
@@ -2068,7 +2100,7 @@ class Detections:
         return cls(
             xyxy=np.empty((0, 4), dtype=np.float32),
             confidence=np.array([], dtype=np.float32),
-            class_id=np.array([], dtype=int),
+            class_id=np.array([], dtype=np.int32),
         )
 
     def is_empty(self) -> bool:
@@ -2167,9 +2199,7 @@ class Detections:
 
         xyxy = np.vstack([d.xyxy for d in detections_list])
 
-        def stack_or_none(
-            name: str,
-        ) -> npt.NDArray[np.generic] | CompactMask | None:
+        def stack_or_none(name: str) -> Any:
             if all(d.__getattribute__(name) is None for d in detections_list):
                 return None
             if any(d.__getattribute__(name) is None for d in detections_list):
@@ -2182,10 +2212,10 @@ class Detections:
                 return np.vstack([np.asarray(m) for m in masks])
             return np.hstack([d.__getattribute__(name) for d in detections_list])
 
-        mask = stack_or_none("mask")
-        confidence = stack_or_none("confidence")
-        class_id = stack_or_none("class_id")
-        tracker_id = stack_or_none("tracker_id")
+        mask = cast(npt.NDArray[np.bool_] | CompactMask | None, stack_or_none("mask"))
+        confidence = cast(npt.NDArray[np.float32] | None, stack_or_none("confidence"))
+        class_id = cast(npt.NDArray[np.int32] | None, stack_or_none("class_id"))
+        tracker_id = cast(npt.NDArray[np.int32] | None, stack_or_none("tracker_id"))
 
         data = merge_data([d.data for d in detections_list])
 
@@ -2470,9 +2500,11 @@ class Detections:
             )
 
         if self.mask is not None:
+            masks = _to_dense_mask(self.mask)
+            assert masks is not None
             indices = mask_non_max_suppression(
                 predictions=predictions,
-                masks=self.mask,
+                masks=masks,
                 iou_threshold=threshold,
                 overlap_metric=overlap_metric,
             )
@@ -2536,15 +2568,18 @@ class Detections:
             )
 
         if self.mask is not None:
+            masks = _to_dense_mask(self.mask)
+            assert masks is not None
             merge_groups = mask_non_max_merge(
                 predictions=predictions,
-                masks=self.mask,
+                masks=masks,
                 iou_threshold=threshold,
                 overlap_metric=overlap_metric,
             )
         else:
+            predictions_f64 = predictions.astype(np.float64)
             merge_groups = box_non_max_merge(
-                predictions=predictions,
+                predictions=predictions_f64,
                 iou_threshold=threshold,
                 overlap_metric=overlap_metric,
             )
@@ -2621,16 +2656,22 @@ def merge_inner_detection_object_pair(
             detection_1_area * detections_1.confidence[0]
             + detections_2_area * detections_2.confidence[0]
         ) / (detection_1_area + detections_2_area)
-        merged_confidence = np.array([merged_confidence])
+        merged_confidence = np.array([merged_confidence], dtype=np.float32)
 
     merged_x1, merged_y1 = np.minimum(xyxy_1[:2], xyxy_2[:2])
     merged_x2, merged_y2 = np.maximum(xyxy_1[2:], xyxy_2[2:])
-    merged_xyxy = np.array([[merged_x1, merged_y1, merged_x2, merged_y2]])
+    merged_xyxy = np.array(
+        [[merged_x1, merged_y1, merged_x2, merged_y2]], dtype=np.float32
+    )
 
-    if detections_1.mask is None and detections_2.mask is None:
+    mask_1 = _to_dense_mask(detections_1.mask)
+    mask_2 = _to_dense_mask(detections_2.mask)
+    if mask_1 is None and mask_2 is None:
         merged_mask = None
     else:
-        merged_mask = np.logical_or(detections_1.mask, detections_2.mask)
+        assert mask_1 is not None
+        assert mask_2 is not None
+        merged_mask = np.logical_or(mask_1, mask_2)
 
     if detections_1.confidence is None or detections_2.confidence is None:
         winning_detection = detections_1
@@ -2667,10 +2708,10 @@ def merge_inner_detections_objects(
     """
     detections_1 = detections[0]
     for detections_2 in detections[1:]:
-        if detections_1.mask is not None and detections_2.mask is not None:
-            iou = mask_iou_batch(detections_1.mask, detections_2.mask, overlap_metric)[
-                0
-            ]
+        mask_1 = _to_dense_mask(detections_1.mask)
+        mask_2 = _to_dense_mask(detections_2.mask)
+        if mask_1 is not None and mask_2 is not None:
+            iou = mask_iou_batch(mask_1, mask_2, overlap_metric)[0]
         else:
             iou = box_iou_batch(detections_1.xyxy, detections_2.xyxy, overlap_metric)[0]
         if iou < threshold:

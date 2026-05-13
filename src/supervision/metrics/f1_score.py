@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import numpy.typing as npt
 from matplotlib import pyplot as plt
 
 from supervision.config import ORIENTED_BOX_COORDINATES
+from supervision.detection.compact_mask import CompactMask
 from supervision.detection.core import Detections
 from supervision.detection.utils.iou_and_nms import (
     box_iou_batch,
@@ -187,10 +188,10 @@ class F1Score(Metric):
                     matches = self._match_detection_batch(
                         predictions.class_id
                         if predictions.class_id is not None
-                        else np.array([]),
+                        else np.array([], dtype=np.int32),
                         targets.class_id
                         if targets.class_id is not None
-                        else np.array([]),
+                        else np.array([], dtype=np.int32),
                         iou,
                         iou_thresholds,
                     )
@@ -247,7 +248,15 @@ class F1Score(Metric):
         sorted_indices = np.argsort(-prediction_confidence)
         matches = matches[sorted_indices]
         prediction_class_ids = prediction_class_ids[sorted_indices]
-        unique_classes, class_counts = np.unique(true_class_ids, return_counts=True)
+        unique_classes_raw, class_counts_raw = np.unique(
+            true_class_ids, return_counts=True
+        )
+        unique_classes: npt.NDArray[np.int32] = cast(
+            npt.NDArray[np.int32], np.asarray(unique_classes_raw, dtype=np.int32)
+        )
+        class_counts: npt.NDArray[np.int32] = cast(
+            npt.NDArray[np.int32], np.asarray(class_counts_raw, dtype=np.int32)
+        )
 
         # Shape: PxTh,P,C,C -> CxThx3
         confusion_matrix = self._compute_confusion_matrix(
@@ -395,6 +404,8 @@ class F1Score(Metric):
             result_boxes: npt.NDArray[np.float32] = detections.xyxy
             return result_boxes
         if self._metric_target == MetricTarget.MASKS:
+            if isinstance(detections.mask, CompactMask):
+                return detections.mask.to_dense()
             if detections.mask is not None:
                 result_masks: npt.NDArray[np.bool_] = detections.mask
                 return result_masks
@@ -600,15 +611,15 @@ class F1ScoreResult:
 
         if self.small_objects is not None:
             small_objects_df = self.small_objects.to_pandas()
-            for key, value in small_objects_df.items():
+            for key, value in small_objects_df.iloc[0].items():
                 pandas_data[f"small_objects_{key}"] = value
         if self.medium_objects is not None:
             medium_objects_df = self.medium_objects.to_pandas()
-            for key, value in medium_objects_df.items():
+            for key, value in medium_objects_df.iloc[0].items():
                 pandas_data[f"medium_objects_{key}"] = value
         if self.large_objects is not None:
             large_objects_df = self.large_objects.to_pandas()
-            for key, value in large_objects_df.items():
+            for key, value in large_objects_df.iloc[0].items():
                 pandas_data[f"large_objects_{key}"] = value
 
         return pd.DataFrame(pandas_data, index=[0])

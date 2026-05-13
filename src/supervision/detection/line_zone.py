@@ -5,7 +5,7 @@ import warnings
 from collections import Counter, defaultdict, deque
 from collections.abc import Iterable
 from functools import lru_cache
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 import cv2
 import numpy as np
@@ -673,8 +673,12 @@ class LineZoneAnnotator:
         annotation_shape = (annotation_dim, annotation_dim)
         annotation_center = Point(annotation_dim // 2, annotation_dim // 2)
 
-        annotation = np.zeros((*annotation_shape, 3), dtype=np.uint8)
-        annotation_alpha = np.zeros((*annotation_shape, 1), dtype=np.uint8)
+        annotation: npt.NDArray[np.uint8] = np.zeros(
+            (*annotation_shape, 3), dtype=np.uint8
+        )
+        annotation_alpha: npt.NDArray[np.uint8] = np.zeros(
+            (*annotation_shape, 1), dtype=np.uint8
+        )
 
         text_args: dict[str, Any] = dict(
             text=text,
@@ -695,19 +699,24 @@ class LineZoneAnnotator:
             background_color=Color.WHITE if text_box_show else None,
             **text_args,
         )
-        annotation = np.dstack((annotation, annotation_alpha))
+        annotation = np.asarray(
+            np.dstack((annotation, annotation_alpha)), dtype=np.uint8
+        )
 
         # Make sure text is displayed upright
         if 90 < line_angle_degrees % 360 < 270:
-            annotation = cv2.flip(annotation, flipCode=-1).astype(np.uint8)
+            annotation = np.asarray(cv2.flip(annotation, flipCode=-1), dtype=np.uint8)
 
         rotation_angle = -line_angle_degrees
         rotation_matrix = cv2.getRotationMatrix2D(
             annotation_center.as_xy_float_tuple(), rotation_angle, scale=1
         )
-        annotation = cv2.warpAffine(annotation, rotation_matrix, annotation_shape)
+        annotation = np.asarray(
+            cv2.warpAffine(annotation, rotation_matrix, annotation_shape),
+            dtype=np.uint8,
+        )
 
-        return cast(npt.NDArray[np.uint8], annotation)
+        return annotation
 
 
 class LineZoneAnnotatorMulticlass:

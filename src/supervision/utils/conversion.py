@@ -5,9 +5,9 @@ from typing import Any, TypeVar, cast
 import cv2
 import numpy as np
 import numpy.typing as npt
-from deprecate import deprecated, void
 from PIL import Image
 
+from deprecate import deprecated, void
 from supervision.draw.base import ImageType
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -25,7 +25,7 @@ def ensure_cv2_image_for_class_method(
     """
 
     @functools.wraps(annotate_func)
-    def wrapper(self: Any, scene: ImageType, *args: Any, **kwargs: Any) -> ImageType:
+    def wrapper(self: Any, scene: Any, *args: Any, **kwargs: Any) -> Any:
         if isinstance(scene, np.ndarray):
             return annotate_func(self, scene, *args, **kwargs)
 
@@ -40,7 +40,7 @@ def ensure_cv2_image_for_class_method(
     return cast(F, wrapper)
 
 
-@deprecated(  # type: ignore[untyped-decorator]
+@deprecated(
     target=ensure_cv2_image_for_class_method,
     deprecated_in="0.27.0",
     remove_in="0.31.0",
@@ -62,7 +62,7 @@ def ensure_cv2_image_for_standalone_function(
     """
 
     @functools.wraps(image_processing_fun)
-    def wrapper(image: ImageType, *args: Any, **kwargs: Any) -> ImageType:
+    def wrapper(image: Any, *args: Any, **kwargs: Any) -> Any:
         if isinstance(image, np.ndarray):
             return image_processing_fun(image, *args, **kwargs)
 
@@ -87,7 +87,7 @@ def ensure_pil_image_for_class_method(
     """
 
     @functools.wraps(annotate_func)
-    def wrapper(self: Any, scene: ImageType, *args: Any, **kwargs: Any) -> ImageType:
+    def wrapper(self: Any, scene: Any, *args: Any, **kwargs: Any) -> Any:
         if isinstance(scene, np.ndarray):
             scene_pil = cv2_to_pillow(scene)
             annotated_pil = annotate_func(self, scene_pil, *args, **kwargs)
@@ -95,14 +95,14 @@ def ensure_pil_image_for_class_method(
             return scene
 
         if isinstance(scene, Image.Image):
-            return cast(ImageType, annotate_func(self, scene, *args, **kwargs))
+            return annotate_func(self, scene, *args, **kwargs)
 
         raise ValueError(f"Unsupported image type: {type(scene)}")
 
     return cast(F, wrapper)
 
 
-@deprecated(  # type: ignore[untyped-decorator]
+@deprecated(
     target=ensure_pil_image_for_class_method,
     deprecated_in="0.27.0",
     remove_in="0.31.0",
@@ -113,7 +113,7 @@ def ensure_pil_image_for_annotation(
     return cast(F, void(annotate_func))
 
 
-@deprecated(  # type: ignore[untyped-decorator]
+@deprecated(
     target=ensure_cv2_image_for_standalone_function,
     deprecated_in="0.27.0",
     remove_in="0.31.0",
@@ -137,11 +137,14 @@ def images_to_cv2(images: list[ImageType]) -> list[npt.NDArray[np.uint8]]:
             (with order preserved).
 
     """
-    result = []
+    result: list[npt.NDArray[np.uint8]] = []
     for image in images:
-        if issubclass(type(image), Image.Image):
-            image = pillow_to_cv2(image)
-        result.append(image)
+        image_np: npt.NDArray[np.uint8]
+        if isinstance(image, Image.Image):
+            image_np = pillow_to_cv2(image)
+        else:
+            image_np = image
+        result.append(image_np)
     return result
 
 
@@ -156,9 +159,11 @@ def pillow_to_cv2(image: Image.Image) -> npt.NDArray[np.uint8]:
     Returns:
         Input image converted to OpenCV format.
     """
-    scene = np.array(image)
-    scene = cv2.cvtColor(scene, cv2.COLOR_RGB2BGR)
-    return scene.astype(np.uint8)
+    scene: npt.NDArray[np.uint8] = np.asarray(image, dtype=np.uint8)
+    scene_bgr: npt.NDArray[np.uint8] = np.asarray(
+        cv2.cvtColor(scene, cv2.COLOR_RGB2BGR), dtype=np.uint8
+    )
+    return scene_bgr
 
 
 def cv2_to_pillow(image: npt.NDArray[np.uint8]) -> Image.Image:
@@ -172,5 +177,7 @@ def cv2_to_pillow(image: npt.NDArray[np.uint8]) -> Image.Image:
     Returns:
         Input image converted to Pillow format.
     """
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    return Image.fromarray(image)
+    rgb_image: npt.NDArray[np.uint8] = np.asarray(
+        cv2.cvtColor(image, cv2.COLOR_BGR2RGB), dtype=np.uint8
+    )
+    return Image.fromarray(rgb_image)

@@ -17,9 +17,9 @@ from supervision.utils.file import list_files_with_extensions
 
 
 def object_to_pascal_voc(
-    xyxy: npt.NDArray[np.number],
+    xyxy: npt.NDArray[np.float32],
     name: str,
-    polygon: npt.NDArray[np.number] | None = None,
+    polygon: npt.NDArray[np.float32] | None = None,
 ) -> Element:
     root = Element("object")
 
@@ -27,6 +27,7 @@ def object_to_pascal_voc(
     object_name.text = name
 
     # https://github.com/roboflow/supervision/issues/144
+    xyxy = np.asarray(xyxy, dtype=np.float32).copy()
     xyxy += 1
 
     bndbox = SubElement(root, "bndbox")
@@ -41,6 +42,7 @@ def object_to_pascal_voc(
 
     if polygon is not None:
         # https://github.com/roboflow/supervision/issues/144
+        polygon = np.asarray(polygon, dtype=np.float32).copy()
         polygon += 1
         object_polygon = SubElement(root, "polygon")
         for index, point in enumerate(polygon, start=1):
@@ -57,7 +59,7 @@ def detections_to_pascal_voc(
     detections: Detections,
     classes: list[str],
     filename: str,
-    image_shape: tuple[int, int, int],
+    image_shape: tuple[int, int] | tuple[int, int, int],
     min_image_area_percentage: float = 0.0,
     max_image_area_percentage: float = 1.0,
     approximation_percentage: float = 0.75,
@@ -82,7 +84,8 @@ def detections_to_pascal_voc(
     Returns:
         An XML string in Pascal VOC format representing the detections.
     """
-    height, width, depth = image_shape
+    height, width = image_shape[:2]
+    depth = image_shape[2] if len(image_shape) > 2 else 1
 
     # Create root element
     annotation = Element("annotation")
@@ -131,9 +134,10 @@ def detections_to_pascal_voc(
                 approximation_percentage=approximation_percentage,
             )
             for polygon in polygons:
-                xyxy = polygon_to_xyxy(polygon=polygon)
+                polygon_f32 = np.asarray(polygon, dtype=np.float32)
+                xyxy = polygon_to_xyxy(polygon=polygon_f32).astype(np.float32)
                 next_object = object_to_pascal_voc(
-                    xyxy=xyxy, name=name, polygon=polygon
+                    xyxy=xyxy, name=name, polygon=polygon_f32
                 )
                 annotation.append(next_object)
         else:
@@ -141,7 +145,9 @@ def detections_to_pascal_voc(
             annotation.append(next_object)
 
     # Generate XML string
-    xml_string = str(parseString(tostring(annotation)).toprettyxml(indent="  "))
+    xml_string = str(
+        parseString(tostring(annotation).decode()).toprettyxml(indent="  ")
+    )
     return xml_string
 
 
@@ -186,6 +192,7 @@ def load_pascal_voc_annotations(
 
         tree = parse(annotation_path)
         root = tree.getroot()
+        assert root is not None
 
         image = cv2.imread(image_path)
         if image is None:

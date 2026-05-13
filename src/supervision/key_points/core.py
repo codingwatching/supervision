@@ -23,6 +23,12 @@ Index1D = Union[
 Index2D = tuple[Index1D, Index1D]
 
 
+def _optional_array_equal(left: Any | None, right: Any | None) -> bool:
+    if left is None or right is None:
+        return left is None and right is None
+    return np.array_equal(left, right)
+
+
 @dataclass
 class KeyPoints:
     """
@@ -165,9 +171,9 @@ class KeyPoints:
     """  # noqa: E501 // docs
 
     xy: npt.NDArray[np.float32]
-    class_id: npt.NDArray[np.int_] | None = None
+    class_id: npt.NDArray[np.int32] | None = None
     confidence: npt.NDArray[np.float32] | None = None
-    data: dict[str, npt.NDArray[np.generic] | list[Any]] = field(default_factory=dict)
+    data: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         validate_key_points_fields(
@@ -203,8 +209,8 @@ class KeyPoints:
         tuple[
             npt.NDArray[np.float32],
             npt.NDArray[np.float32] | None,
-            npt.NDArray[np.int_] | None,
-            dict[str, npt.NDArray[np.generic] | list[Any]],
+            npt.NDArray[np.int32] | None,
+            dict[str, Any],
         ]
     ]:
         """
@@ -225,8 +231,8 @@ class KeyPoints:
         return all(
             [
                 np.array_equal(self.xy, other.xy),
-                np.array_equal(self.class_id, other.class_id),
-                np.array_equal(self.confidence, other.confidence),
+                _optional_array_equal(self.class_id, other.class_id),
+                _optional_array_equal(self.confidence, other.confidence),
                 is_data_equal(self.data, other.data),
             ]
         )
@@ -751,41 +757,47 @@ class KeyPoints:
             return self.data.get(index)
 
         if isinstance(index, np.ndarray) and index.ndim == 2 and index.dtype == bool:
-            return self._get_by_2d_bool_mask(index)
+            return self._get_by_2d_bool_mask(cast(npt.NDArray[np.bool_], index))
 
         if not isinstance(index, tuple):
             index = (index, slice(None))
 
         i, j = index
+        i_index: Any = i
+        j_index: Any = j
 
-        if isinstance(i, int):
-            i = [i]
+        if isinstance(i_index, int):
+            i_index = [i_index]
 
-        if isinstance(i, list) and all(isinstance(x, bool) for x in i):
-            i = np.array(i)
-        if isinstance(j, list) and all(isinstance(x, bool) for x in j):
-            j = np.array(j)
+        if isinstance(i_index, list) and all(isinstance(x, bool) for x in i_index):
+            i_index = np.array(i_index)
+        if isinstance(j_index, list) and all(isinstance(x, bool) for x in j_index):
+            j_index = np.array(j_index)
 
-        if isinstance(i, np.ndarray) and i.dtype == bool:
-            i = np.flatnonzero(i)
-        if isinstance(j, np.ndarray) and j.dtype == bool:
-            j = np.flatnonzero(j)
+        if isinstance(i_index, np.ndarray) and i_index.dtype == bool:
+            i_index = np.flatnonzero(i_index)
+        if isinstance(j_index, np.ndarray) and j_index.dtype == bool:
+            j_index = np.flatnonzero(j_index)
 
         if (
-            isinstance(i, (list, np.ndarray))
-            and isinstance(j, (list, np.ndarray))
-            and not np.isscalar(i)
-            and not np.isscalar(j)
+            isinstance(i_index, (list, np.ndarray))
+            and isinstance(j_index, (list, np.ndarray))
+            and not np.isscalar(i_index)
+            and not np.isscalar(j_index)
         ):
-            i, j = np.ix_(i, j)
+            i_index, j_index = np.ix_(i_index, j_index)
 
-        xy_selected = self.xy[i, j]
+        xy_selected = self.xy[i_index, j_index]
 
-        conf_selected = self.confidence[i, j] if self.confidence is not None else None
+        conf_selected = (
+            self.confidence[i_index, j_index] if self.confidence is not None else None
+        )
 
-        class_id_selected = self.class_id[i] if self.class_id is not None else None
+        class_id_selected = (
+            self.class_id[i_index] if self.class_id is not None else None
+        )
 
-        data_selected = get_data_item(self.data, i)
+        data_selected = get_data_item(self.data, i_index)
 
         if xy_selected.ndim == 1:
             xy_selected = xy_selected.reshape(1, 1, 2)
@@ -953,6 +965,7 @@ class KeyPoints:
         detections = Detections.merge(detections_list)
         detections.class_id = self.class_id
         detections.data = self.data
-        detections = cast(Detections, detections[detections.area > 0])
+        area: npt.NDArray[np.float32] = np.asarray(detections.area, dtype=np.float32)
+        detections = cast(Detections, detections[area > 0])
 
         return detections

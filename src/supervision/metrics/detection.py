@@ -7,8 +7,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-from deprecate import deprecated_class
 
+from deprecate import deprecated_class
 from supervision.dataset.core import DetectionDataset
 from supervision.detection.core import Detections
 from supervision.detection.utils.iou_and_nms import box_iou_batch
@@ -226,7 +226,7 @@ class ConfusionMatrix:
         validate_input_tensors(predictions, targets)
 
         num_classes = len(classes)
-        matrix = np.zeros((num_classes + 1, num_classes + 1))
+        matrix = np.zeros((num_classes + 1, num_classes + 1), dtype=np.int32)
         for true_batch, detection_batch in zip(targets, predictions):
             matrix += cls.evaluate_detection_batch(
                 predictions=detection_batch,
@@ -271,7 +271,7 @@ class ConfusionMatrix:
         Returns:
             Confusion matrix based on a single image.
         """
-        result_matrix = np.zeros((num_classes + 1, num_classes + 1))
+        result_matrix = np.zeros((num_classes + 1, num_classes + 1), dtype=np.int32)
 
         # Filter predictions by confidence threshold
         conf_idx = 5
@@ -472,7 +472,7 @@ class ConfusionMatrix:
             Confusion matrix plot.
         """
 
-        array = self.matrix.copy()
+        array = self.matrix.astype(np.float32).copy()
 
         if normalize:
             eps = 1e-8
@@ -495,7 +495,7 @@ class ConfusionMatrix:
         im = ax.imshow(array, cmap="Blues")
 
         cbar = ax.figure.colorbar(im, ax=ax)
-        cbar.mappable.set_clim(vmin=0, vmax=np.nanmax(array))
+        cbar.mappable.set_clim(vmin=0, vmax=float(np.nanmax(array)))
 
         if x_tick_labels is None:
             tick_interval = 2

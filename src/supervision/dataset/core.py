@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
+from typing import cast
 
 import cv2
 import numpy as np
@@ -105,7 +106,7 @@ class DetectionDataset(BaseDataset):
         image = cv2.imread(image_path)
         if image is None:
             raise ValueError(f"Could not read image from path: {image_path}")
-        return image
+        return cast(npt.NDArray[np.uint8], image)
 
     def __len__(self) -> int:
         return len(self._images_in_memory) or len(self.image_paths)
@@ -371,11 +372,12 @@ class DetectionDataset(BaseDataset):
                     annotations_directory_path, f"{annotation_name}.xml"
                 )
                 image_name = Path(image_path).name
+                image_shape = cast(tuple[int, int] | tuple[int, int, int], image.shape)
                 pascal_voc_xml = detections_to_pascal_voc(
                     detections=annotations,
                     classes=self.classes,
                     filename=image_name,
-                    image_shape=image.shape,
+                    image_shape=image_shape,
                     min_image_area_percentage=min_image_area_percentage,
                     max_image_area_percentage=max_image_area_percentage,
                     approximation_percentage=approximation_percentage,
@@ -707,7 +709,7 @@ class ClassificationDataset(BaseDataset):
         image = cv2.imread(image_path)
         if image is None:
             raise ValueError(f"Could not read image from path: {image_path}")
-        return image
+        return cast(npt.NDArray[np.uint8], image)
 
     def __len__(self) -> int:
         return len(self._images_in_memory) or len(self.image_paths)

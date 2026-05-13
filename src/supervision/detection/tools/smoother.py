@@ -137,8 +137,14 @@ class DetectionsSmoother:
             return None
 
         ret = deepcopy(valid[0])
-        ret.xyxy = np.mean([d.xyxy for d in valid], axis=0)
-        ret.confidence = np.mean([d.confidence for d in valid], axis=0)
+        ret.xyxy = np.asarray(
+            np.mean([d.xyxy for d in valid], axis=0), dtype=np.float32
+        )
+        if all(d.confidence is not None for d in valid):
+            confidences = [d.confidence for d in valid if d.confidence is not None]
+            ret.confidence = np.asarray(np.mean(confidences, axis=0), dtype=np.float32)
+        else:
+            ret.confidence = None
 
         return ret
 

@@ -4,10 +4,11 @@ import threading
 import warnings
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import numpy.typing as npt
+from PIL import Image
 
 from supervision.config import ORIENTED_BOX_COORDINATES
 from supervision.detection.compact_mask import CompactMask
@@ -15,9 +16,10 @@ from supervision.detection.core import Detections
 from supervision.detection.utils.boxes import move_boxes, move_oriented_boxes
 from supervision.detection.utils.iou_and_nms import OverlapFilter, OverlapMetric
 from supervision.detection.utils.masks import move_masks
-from supervision.draw.base import ImageType
 from supervision.utils.image import crop_image, get_image_resolution_wh
 from supervision.utils.internal import SupervisionWarnings
+
+ImageInput = npt.NDArray[np.uint8] | Image.Image
 
 
 def move_detections(
@@ -134,7 +136,7 @@ class InferenceSlicer:
 
     def __init__(
         self,
-        callback: Callable[[ImageType], Detections],
+        callback: Callable[[ImageInput], Detections],
         slice_wh: int | tuple[int, int] = 640,
         overlap_wh: int | tuple[int, int] = 100,
         overlap_filter: OverlapFilter | str = OverlapFilter.NON_MAX_SUPPRESSION,
@@ -153,13 +155,13 @@ class InferenceSlicer:
         self.iou_threshold = iou_threshold
         self.overlap_metric = OverlapMetric.from_value(overlap_metric)
         self.overlap_filter = OverlapFilter.from_value(overlap_filter)
-        self.callback: Callable[[ImageType], Detections] = callback
+        self.callback: Callable[[ImageInput], Detections] = callback
         self.thread_workers = thread_workers
         self.compact_masks = compact_masks
         self._out_of_slice_bounds_warned: bool = False
         self._out_of_slice_bounds_lock = threading.Lock()
 
-    def __call__(self, image: ImageType) -> Detections:
+    def __call__(self, image: ImageInput) -> Detections:
         """
         Perform tiled inference on the full image and return merged detections.
 
@@ -170,7 +172,7 @@ class InferenceSlicer:
             Merged detections across all slices.
         """
         detections_list: list[Detections] = []
-        resolution_wh = get_image_resolution_wh(image)
+        resolution_wh = get_image_resolution_wh(cast(Any, image))
 
         offsets = self._generate_offset(
             resolution_wh=resolution_wh,
@@ -205,7 +207,7 @@ class InferenceSlicer:
         )
         return merged
 
-    def _run_callback(self, image: ImageType, offset: npt.NDArray[Any]) -> Detections:
+    def _run_callback(self, image: ImageInput, offset: npt.NDArray[Any]) -> Detections:
         """
         Run detection callback on a sliced portion of the image and adjust coordinates.
 
@@ -217,7 +219,7 @@ class InferenceSlicer:
         Returns:
             Detections adjusted to the full image coordinate system.
         """
-        image_slice = crop_image(image=image, xyxy=offset)
+        image_slice = cast(ImageInput, crop_image(image=cast(Any, image), xyxy=offset))
         detections = self.callback(image_slice)
 
         if (
@@ -225,14 +227,14 @@ class InferenceSlicer:
             and detections.mask is not None
             and isinstance(detections.mask, np.ndarray)
         ):
-            slice_w, slice_h = get_image_resolution_wh(image_slice)
+            slice_w, slice_h = get_image_resolution_wh(cast(Any, image_slice))
             detections.mask = CompactMask.from_dense(
                 detections.mask,
                 detections.xyxy,
                 image_shape=(slice_h, slice_w),
             )
 
-        resolution_wh = get_image_resolution_wh(image)
+        resolution_wh = get_image_resolution_wh(cast(Any, image))
         # Fast-path: skip locking and bounds checking when the warning has already
         # been emitted or when there are no detections to inspect.
         needs_warning_check = (

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import os
 import warnings
+from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -49,7 +50,7 @@ def _parse_polygon(values: list[str]) -> npt.NDArray[np.float32]:
 
 
 def _polygons_to_masks(
-    polygons: list[npt.NDArray[np.number]], resolution_wh: tuple[int, int]
+    polygons: Sequence[npt.NDArray[np.number]], resolution_wh: tuple[int, int]
 ) -> npt.NDArray[np.bool_]:
     return np.array(
         [
@@ -99,31 +100,34 @@ def yolo_annotations_to_detections(
     if len(lines) == 0:
         return Detections.empty()
 
-    class_id, relative_xyxy, relative_polygon, relative_xyxyxyxy = [], [], [], []
+    class_id_list: list[int] = []
+    relative_xyxy_list: list[npt.NDArray[np.float32]] = []
+    relative_polygon_list: list[npt.NDArray[np.float32]] = []
+    relative_xyxyxyxy_list: list[npt.NDArray[np.float32]] = []
     w, h = resolution_wh
     for line in lines:
         values = line.split()
-        class_id.append(int(values[0]))
+        class_id_list.append(int(values[0]))
         if len(values) == 5:
             box = _parse_box(values=values[1:])
-            relative_xyxy.append(box)
+            relative_xyxy_list.append(box)
             if with_masks:
-                relative_polygon.append(_box_to_polygon(box=box))
+                relative_polygon_list.append(_box_to_polygon(box=box))
         elif len(values) > 5:
             polygon = _parse_polygon(values=values[1:])
-            relative_xyxy.append(polygon_to_xyxy(polygon=polygon))
+            relative_xyxy_list.append(polygon_to_xyxy(polygon=polygon))
             if is_obb:
-                relative_xyxyxyxy.append(np.array(values[1:]))
+                relative_xyxyxyxy_list.append(np.array(values[1:], dtype=np.float32))
             if with_masks:
-                relative_polygon.append(polygon)
+                relative_polygon_list.append(polygon)
 
-    class_id = np.array(class_id, dtype=int)
-    relative_xyxy = np.array(relative_xyxy, dtype=np.float32)
+    class_id = np.array(class_id_list, dtype=np.int32)
+    relative_xyxy = np.array(relative_xyxy_list, dtype=np.float32)
     xyxy = relative_xyxy * np.array([w, h, w, h], dtype=np.float32)
-    data = {}
+    data: dict[str, Any] = {}
 
     if is_obb:
-        relative_xyxyxyxy = np.array(relative_xyxyxyxy, dtype=np.float32)
+        relative_xyxyxyxy = np.array(relative_xyxyxyxy_list, dtype=np.float32)
         xyxyxyxy = relative_xyxyxyxy.reshape(-1, 4, 2)
         xyxyxyxy *= np.array([w, h], dtype=np.float32)
         data[ORIENTED_BOX_COORDINATES] = xyxyxyxy
@@ -133,7 +137,7 @@ def yolo_annotations_to_detections(
 
     polygons = [
         polygon * np.array(resolution_wh, dtype=np.float32)
-        for polygon in relative_polygon
+        for polygon in relative_polygon_list
     ]
     mask = _polygons_to_masks(polygons=polygons, resolution_wh=resolution_wh)
     return Detections(class_id=class_id, xyxy=xyxy, data=data, mask=mask)
@@ -229,10 +233,10 @@ def load_yolo_annotations(
 def object_to_yolo(
     xyxy: npt.NDArray[np.number],
     class_id: int,
-    image_shape: tuple[int, int, int],
+    image_shape: tuple[int, int] | tuple[int, int, int],
     polygon: npt.NDArray[np.number] | None = None,
 ) -> str:
-    h, w, _ = image_shape
+    h, w = image_shape[:2]
     if polygon is None:
         xyxy_relative = xyxy / np.array([w, h, w, h], dtype=np.float32)
         x_min, y_min, x_max, y_max = xyxy_relative
@@ -250,7 +254,7 @@ def object_to_yolo(
 
 def detections_to_yolo_annotations(
     detections: Detections,
-    image_shape: tuple[int, int, int],
+    image_shape: tuple[int, int] | tuple[int, int, int],
     min_image_area_percentage: float = 0.0,
     max_image_area_percentage: float = 1.0,
     approximation_percentage: float = 0.75,
@@ -304,9 +308,10 @@ def save_yolo_annotations(
         yolo_annotations_path = os.path.join(
             annotations_directory_path, yolo_annotations_name
         )
+        image_shape = cast(tuple[int, int] | tuple[int, int, int], image.shape)
         lines = detections_to_yolo_annotations(
             detections=annotation,
-            image_shape=image.shape,
+            image_shape=image_shape,
             min_image_area_percentage=min_image_area_percentage,
             max_image_area_percentage=max_image_area_percentage,
             approximation_percentage=approximation_percentage,

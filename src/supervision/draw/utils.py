@@ -325,7 +325,12 @@ def draw_image(
     if isinstance(image, str):
         if not os.path.exists(image):
             raise FileNotFoundError(f"Image path ('{image}') does not exist.")
-        image = cv2.imread(image, cv2.IMREAD_UNCHANGED)
+        loaded_image = cv2.imread(image, cv2.IMREAD_UNCHANGED)
+        if loaded_image is None:
+            raise FileNotFoundError(f"Could not load image from '{image}'.")
+        image_np = loaded_image
+    else:
+        image_np = image
 
     # Validate opacity
     if not 0.0 <= opacity <= 1.0:
@@ -345,22 +350,25 @@ def draw_image(
         raise ValueError("Invalid rectangle dimensions.")
 
     # Resize and isolate alpha channel
-    image = cv2.resize(image, (rect_width, rect_height))
-    image = cast(npt.NDArray[np.uint8], image)
+    resized_image = cast(
+        npt.NDArray[np.uint8], cv2.resize(image_np, (rect_width, rect_height))
+    )
     alpha_channel = (
-        image[:, :, 3]
-        if image.shape[2] == 4
-        else np.ones((rect_height, rect_width), dtype=image.dtype) * 255
+        resized_image[:, :, 3]
+        if resized_image.shape[2] == 4
+        else np.ones((rect_height, rect_width), dtype=resized_image.dtype) * 255
     )
     alpha_scaled = cv2.convertScaleAbs(alpha_channel * opacity)
 
     # Perform blending
     scene_roi = scene[rect_y : rect_y + rect_height, rect_x : rect_x + rect_width]
     alpha_float = alpha_scaled.astype(np.float32) / 255.0
-    blended_roi = cv2.convertScaleAbs(
+    blended_roi = np.clip(
         (1 - alpha_float[..., np.newaxis]) * scene_roi
-        + alpha_float[..., np.newaxis] * image[:, :, :3]
-    )
+        + alpha_float[..., np.newaxis] * image_np[:, :, :3],
+        0,
+        255,
+    ).astype(np.uint8)
 
     # Update the scene
     scene[rect_y : rect_y + rect_height, rect_x : rect_x + rect_width] = blended_roi

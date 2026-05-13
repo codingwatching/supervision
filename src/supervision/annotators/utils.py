@@ -297,7 +297,7 @@ def snap_boxes(
 
         ```
     """
-    result = np.copy(xyxy)
+    result: npt.NDArray[np.float32] = np.asarray(xyxy, dtype=np.float32).copy()
     width, height = resolution_wh
 
     # X-axis (prioritize left edge)
@@ -316,7 +316,7 @@ def snap_boxes(
     bottom_shift = height - result[bottom_overflow, 3]
     result[bottom_overflow, 1:4:2] += bottom_shift[:, np.newaxis]
 
-    return result.astype(np.float32)  # type: ignore
+    return result
 
 
 class Trace:
@@ -330,9 +330,9 @@ class Trace:
         self.max_size = max_size
         self.anchor = anchor
 
-        self.frame_id = np.array([], dtype=int)
-        self.xy = np.empty((0, 2), dtype=np.float32)
-        self.tracker_id = np.array([], dtype=int)
+        self.frame_id: npt.NDArray[np.int_] = np.array([], dtype=np.int_)
+        self.xy: npt.NDArray[np.float32] = np.empty((0, 2), dtype=np.float32)
+        self.tracker_id: npt.NDArray[np.int_] = np.array([], dtype=np.int_)
 
     def put(self, detections: Detections) -> None:
         frame_id: npt.NDArray[np.int_] = np.full(

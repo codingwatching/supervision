@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping, Sequence
 from itertools import chain
 from typing import Any, cast
 
@@ -54,18 +55,18 @@ def extract_ultralytics_masks(yolov8_results: Any) -> npt.NDArray[np.bool_] | No
 def process_roboflow_result(
     roboflow_result: dict[str, Any],
 ) -> tuple[
-    npt.NDArray[np.floating],
-    npt.NDArray[np.floating],
-    npt.NDArray[np.integer],
+    npt.NDArray[np.float32],
+    npt.NDArray[np.float32],
+    npt.NDArray[np.int32],
     npt.NDArray[np.bool_] | None,
-    npt.NDArray[np.integer] | None,
-    dict[str, npt.NDArray[np.generic]],
+    npt.NDArray[np.int32] | None,
+    dict[str, Any],
 ]:
     if not roboflow_result["predictions"]:
         return (
-            np.empty((0, 4), dtype=np.float64),
-            np.empty(0, dtype=np.float64),
-            np.empty(0, dtype=np.int64),
+            np.empty((0, 4), dtype=np.float32),
+            np.empty(0, dtype=np.float32),
+            np.empty(0, dtype=np.int32),
             None,
             None,
             {CLASS_NAME_DATA_FIELD: np.empty(0, dtype=str)},
@@ -133,25 +134,31 @@ def process_roboflow_result(
             polygon = np.array(
                 [[point["x"], point["y"]] for point in prediction["points"]], dtype=int
             )
-            mask = polygon_to_mask(polygon, resolution_wh=(image_width, image_height))
+            mask = polygon_to_mask(
+                polygon, resolution_wh=(image_width, image_height)
+            ).astype(bool)
             xyxy.append([x_min, y_min, x_max, y_max])
             class_id.append(prediction["class_id"])
             class_name.append(prediction["class"])
             confidence.append(prediction["confidence"])
-            masks.append(mask.astype(bool))
+            masks.append(mask)
             if "tracker_id" in prediction:
                 tracker_ids.append(prediction["tracker_id"])
 
-    xyxy_arr: npt.NDArray[np.floating] = (
-        np.array(xyxy, dtype=np.float64) if len(xyxy) > 0 else np.empty((0, 4))
+    xyxy_arr: npt.NDArray[np.float32] = (
+        np.array(xyxy, dtype=np.float32)
+        if len(xyxy) > 0
+        else np.empty((0, 4), dtype=np.float32)
     )
-    confidence_arr: npt.NDArray[np.floating] = (
-        np.array(confidence, dtype=np.float64) if len(confidence) > 0 else np.empty(0)
+    confidence_arr: npt.NDArray[np.float32] = (
+        np.array(confidence, dtype=np.float32)
+        if len(confidence) > 0
+        else np.empty(0, dtype=np.float32)
     )
-    class_id_arr: npt.NDArray[np.integer] = (
-        np.array(class_id, dtype=np.int64)
+    class_id_arr: npt.NDArray[np.int32] = (
+        np.array(class_id, dtype=np.int32)
         if len(class_id) > 0
-        else np.empty(0, dtype=np.int64)
+        else np.empty(0, dtype=np.int32)
     )
     class_name_arr: npt.NDArray[np.str_] = (
         np.array(class_name) if len(class_name) > 0 else np.empty(0, dtype=str)
@@ -159,10 +166,10 @@ def process_roboflow_result(
     masks_arr: npt.NDArray[np.bool_] | None = (
         np.array(masks, dtype=bool) if len(masks) > 0 else None
     )
-    tracker_id_arr: npt.NDArray[np.integer] | None = (
-        np.array(tracker_ids, dtype=np.int64) if len(tracker_ids) > 0 else None
+    tracker_id_arr: npt.NDArray[np.int32] | None = (
+        np.array(tracker_ids, dtype=np.int32) if len(tracker_ids) > 0 else None
     )
-    data: dict[str, npt.NDArray[np.generic]] = {CLASS_NAME_DATA_FIELD: class_name_arr}
+    data: dict[str, Any] = {CLASS_NAME_DATA_FIELD: class_name_arr}
 
     return (
         xyxy_arr,
@@ -175,8 +182,8 @@ def process_roboflow_result(
 
 
 def is_data_equal(
-    data_a: dict[str, npt.NDArray[np.generic]],
-    data_b: dict[str, npt.NDArray[np.generic]],
+    data_a: Mapping[str, Any],
+    data_b: Mapping[str, Any],
 ) -> bool:
     """
     Compares the data payloads of two Detections instances.
@@ -214,8 +221,8 @@ def is_metadata_equal(metadata_a: dict[str, Any], metadata_b: dict[str, Any]) ->
 
 
 def merge_data(
-    data_list: list[dict[str, npt.NDArray[np.generic] | list[Any]]],
-) -> dict[str, npt.NDArray[np.generic] | list[Any]]:
+    data_list: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
     """
     Merges the data payloads of a list of Detections instances.
 
@@ -249,7 +256,7 @@ def merge_data(
                 "All data values within a single object must have equal length."
             )
 
-    merged_data: dict[str, list[Any]] = {key: [] for key in all_keys_sets[0]}
+    merged_data: dict[str, Any] = {key: [] for key in all_keys_sets[0]}
     for data in data_list:
         for key in data:
             merged_data[key].append(data[key])
@@ -274,7 +281,7 @@ def merge_data(
     return merged_data
 
 
-def merge_metadata(metadata_list: list[dict[str, Any]]) -> dict[str, Any]:
+def merge_metadata(metadata_list: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """
     Merge metadata from a list of metadata dictionaries.
 
@@ -329,9 +336,9 @@ def merge_metadata(metadata_list: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def get_data_item(
-    data: dict[str, npt.NDArray[np.generic] | list[Any]],
-    index: int | slice | list[int] | npt.NDArray[np.integer | np.bool_],
-) -> dict[str, npt.NDArray[np.generic] | list[Any]]:
+    data: Mapping[str, Any],
+    index: Any,
+) -> dict[str, Any]:
     """
     Retrieve a subset of the data dictionary based on the given index.
 
@@ -342,7 +349,7 @@ def get_data_item(
     Returns:
         A subset of the data dictionary corresponding to the specified index.
     """
-    subset_data: dict[str, npt.NDArray[np.generic] | list[Any]] = {}
+    subset_data: dict[str, Any] = {}
     for key, value in data.items():
         if isinstance(value, np.ndarray):
             subset_data[key] = value[index]

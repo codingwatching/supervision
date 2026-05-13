@@ -331,8 +331,10 @@ class VertexLabelAnnotator:
         if skeletons_count == 0:
             return scene
 
-        anchors = key_points.xy.reshape(points_count * skeletons_count, 2).astype(int)
-        mask = np.all(anchors != 0, axis=1)
+        anchors_array: npt.NDArray[np.int32] = key_points.xy.reshape(
+            points_count * skeletons_count, 2
+        ).astype(np.int32)
+        mask = np.all(anchors_array != 0, axis=1)
 
         if not np.any(mask):
             return scene
@@ -353,23 +355,22 @@ class VertexLabelAnnotator:
             labels=labels, points_count=points_count, skeletons_count=skeletons_count
         )
 
-        anchors = anchors[mask]
+        anchors = anchors_array[mask]
         colors = colors[mask]
         text_colors = text_colors[mask]
         filtered_labels = processed_labels[mask]
 
-        xyxy = np.array(
-            [
-                self.get_text_bounding_box(
-                    text=label,
-                    font=font,
-                    text_scale=self.text_scale,
-                    text_thickness=self.text_thickness,
-                    center_coordinates=tuple(anchor),
-                )
-                for anchor, label in zip(anchors, filtered_labels)
-            ]
-        )
+        xyxy_list: list[tuple[float, float, float, float]] = [
+            self.get_text_bounding_box(
+                text=label,
+                font=font,
+                text_scale=self.text_scale,
+                text_thickness=self.text_thickness,
+                center_coordinates=tuple(anchor),
+            )
+            for anchor, label in zip(anchors, filtered_labels)
+        ]
+        xyxy = np.asarray(xyxy_list, dtype=np.float32)
         xyxy_padded = pad_boxes(xyxy=xyxy, px=self.text_padding)
 
         if self.smart_position:

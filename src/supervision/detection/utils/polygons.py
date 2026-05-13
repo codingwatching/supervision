@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import cast
-
 import cv2
 import numpy as np
 import numpy.typing as npt
@@ -34,7 +32,9 @@ def filter_polygons_by_area(
     """
     if min_area is None and max_area is None:
         return polygons
-    ares = [cv2.contourArea(polygon) for polygon in polygons]
+    ares = [
+        cv2.contourArea(np.asarray(polygon, dtype=np.float32)) for polygon in polygons
+    ]
     return [
         polygon
         for polygon, area in zip(polygons, ares)
@@ -80,10 +80,12 @@ def approximate_polygon(
     approximated_points = polygon
     while True:
         epsilon += epsilon_step
-        new_approximated_points = cv2.approxPolyDP(polygon, epsilon, closed=True)
+        new_approximated_points = cv2.approxPolyDP(
+            np.asarray(polygon, dtype=np.float32), epsilon, closed=True
+        )
         if len(new_approximated_points) > target_points:
             approximated_points = new_approximated_points
         else:
             break
 
-    return cast(npt.NDArray[np.number], np.squeeze(approximated_points, axis=1))
+    return np.squeeze(approximated_points, axis=1)

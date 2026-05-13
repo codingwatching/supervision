@@ -7,7 +7,7 @@ from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -160,15 +160,15 @@ class MeanAveragePrecisionResult:
 
         if self.small_objects is not None:
             small_objects_df = self.small_objects.to_pandas()
-            for key, value in small_objects_df.items():
+            for key, value in small_objects_df.iloc[0].items():
                 pandas_data[f"small_objects_{key}"] = value
         if self.medium_objects is not None:
             medium_objects_df = self.medium_objects.to_pandas()
-            for key, value in medium_objects_df.items():
+            for key, value in medium_objects_df.iloc[0].items():
                 pandas_data[f"medium_objects_{key}"] = value
         if self.large_objects is not None:
             large_objects_df = self.large_objects.to_pandas()
-            for key, value in large_objects_df.items():
+            for key, value in large_objects_df.iloc[0].items():
                 pandas_data[f"large_objects_{key}"] = value
 
         # Average precisions are currently not included in the DataFrame.
@@ -1025,7 +1025,7 @@ class COCOEvaluator:
                     out=np.full(sums.shape, -1.0, dtype=np.float64),
                     where=counts > 0,
                 )
-                return means.astype(np.float32)
+                return cast(npt.NDArray[np.float32], means.astype(np.float32))
 
             mAP_scores = mean_with_mask((1, 2))
             ap_per_class = mean_with_mask(1).transpose(1, 0)
@@ -1483,8 +1483,8 @@ class MeanAveragePrecision(Metric):
             is_class_agnostic=self._class_agnostic,
             mAP_scores=cocoEval.results["mAP_scores_small"],
             ap_per_class=cocoEval.results["ap_per_class_small"],
-            iou_thresholds=cocoEval.params.iou_thrs,
-            matched_classes=np.array(cocoEval.params.cat_ids),
+            iou_thresholds=np.asarray(cocoEval.params.iou_thrs, dtype=np.float64),
+            matched_classes=np.array(cocoEval.params.cat_ids, dtype=np.int32),
         )
         # Create MeanAveragePrecisionResult object for medium objects
         mAP_medium = MeanAveragePrecisionResult(
@@ -1492,8 +1492,8 @@ class MeanAveragePrecision(Metric):
             is_class_agnostic=self._class_agnostic,
             mAP_scores=cocoEval.results["mAP_scores_medium"],
             ap_per_class=cocoEval.results["ap_per_class_medium"],
-            iou_thresholds=cocoEval.params.iou_thrs,
-            matched_classes=np.array(cocoEval.params.cat_ids),
+            iou_thresholds=np.asarray(cocoEval.params.iou_thrs, dtype=np.float64),
+            matched_classes=np.array(cocoEval.params.cat_ids, dtype=np.int32),
         )
         # Create MeanAveragePrecisionResult object for large objects
         mAP_large = MeanAveragePrecisionResult(
@@ -1501,8 +1501,8 @@ class MeanAveragePrecision(Metric):
             is_class_agnostic=self._class_agnostic,
             mAP_scores=cocoEval.results["mAP_scores_large"],
             ap_per_class=cocoEval.results["ap_per_class_large"],
-            iou_thresholds=cocoEval.params.iou_thrs,
-            matched_classes=np.array(cocoEval.params.cat_ids),
+            iou_thresholds=np.asarray(cocoEval.params.iou_thrs, dtype=np.float64),
+            matched_classes=np.array(cocoEval.params.cat_ids, dtype=np.int32),
         )
 
         # Create the final MeanAveragePrecisionResult object
@@ -1511,8 +1511,8 @@ class MeanAveragePrecision(Metric):
             is_class_agnostic=self._class_agnostic,
             mAP_scores=cocoEval.results["mAP_scores_all_sizes"],
             ap_per_class=cocoEval.results["ap_per_class_all_sizes"],
-            iou_thresholds=cocoEval.params.iou_thrs,
-            matched_classes=np.array(cocoEval.params.cat_ids),
+            iou_thresholds=np.asarray(cocoEval.params.iou_thrs, dtype=np.float64),
+            matched_classes=np.array(cocoEval.params.cat_ids, dtype=np.int32),
             small_objects=mAP_small,
             medium_objects=mAP_medium,
             large_objects=mAP_large,

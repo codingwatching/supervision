@@ -6,7 +6,7 @@ from collections import deque
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
 from queue import Empty, Full, Queue
-from typing import Any
+from typing import Any, cast
 
 import cv2
 import numpy as np
@@ -96,14 +96,17 @@ class VideoSink:
         self.target_path = target_path
         self.video_info = video_info
         self.__codec = codec
-        self.__writer = None
+        self.__writer: cv2.VideoWriter | None = None
+        self.__fourcc: int = 0
 
     def __enter__(self) -> VideoSink:
         try:
-            self.__fourcc = cv2.VideoWriter_fourcc(*self.__codec)
+            fourcc: Any = getattr(cv2, "VideoWriter_fourcc")
+            self.__fourcc = fourcc(*self.__codec)
         except TypeError as e:
             logger.warning("%s. Defaulting to mp4v...", str(e))
-            self.__fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            fourcc = getattr(cv2, "VideoWriter_fourcc")
+            self.__fourcc = fourcc(*"mp4v")
         self.__writer = cv2.VideoWriter(
             self.target_path,
             self.__fourcc,
@@ -200,7 +203,7 @@ def get_video_frames_generator(
         if not success or frame_position >= end:
             break
         if frame is not None:
-            yield frame
+            yield cast(npt.NDArray[np.uint8], frame)
         for _ in range(stride - 1):
             success = video.grab()
             if not success:

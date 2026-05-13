@@ -127,10 +127,12 @@ def calculate_masks_centroids(
         return cast(npt.NDArray[np.int_], centroids.astype(int))
 
     _num_masks, height, width = masks.shape
-    total_pixels = masks.sum(axis=(1, 2))
+    total_pixels: npt.NDArray[np.float64] = masks.sum(axis=(1, 2)).astype(np.float64)
 
     # offset for 1-based indexing
-    vertical_indices, horizontal_indices = np.indices((height, width)) + 0.5
+    vertical_indices, horizontal_indices = (
+        np.indices((height, width), dtype=np.float64) + 0.5
+    )
     # avoid division by zero for empty masks
     total_pixels[total_pixels == 0] = 1
 
@@ -377,13 +379,11 @@ def filter_segments_by_distance(
         return mask.copy()
 
     image = mask.astype(np.uint8)
-    num_labels: int
-    labels: npt.NDArray[np.int32]
-    stats: npt.NDArray[np.int32]
-    centroids: npt.NDArray[np.float64]
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
-        image, connectivity=connectivity
-    )
+    components = cv2.connectedComponentsWithStats(image, connectivity=connectivity)
+    num_labels = int(components[0])
+    labels = np.asarray(components[1], dtype=np.int32)
+    stats = np.asarray(components[2], dtype=np.int32)
+    centroids = np.asarray(components[3], dtype=np.float64)
 
     if num_labels <= 1:
         return mask.copy()

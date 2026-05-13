@@ -108,9 +108,11 @@ class PolygonZone:
         in_bounds = (x >= 0) & (y >= 0) & (x < mask_w) & (y < mask_h)
         x_safe = np.clip(x, 0, mask_w - 1)
         y_safe = np.clip(y, 0, mask_h - 1)
-        is_in_zone = np.all(in_bounds & self.mask[y_safe, x_safe], axis=0)
+        is_in_zone: npt.NDArray[np.bool_] = np.all(
+            in_bounds & self.mask[y_safe, x_safe], axis=0
+        )
         self.current_count = int(np.sum(is_in_zone))
-        return is_in_zone.astype(bool)
+        return is_in_zone
 
 
 class PolygonZoneAnnotator:
