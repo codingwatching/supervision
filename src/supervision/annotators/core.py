@@ -1859,16 +1859,19 @@ class IconAnnotator(BaseAnnotator):
 
     @lru_cache
     def _load_icon(self, icon_path: str) -> npt.NDArray[np.uint8]:
-        icon = cv2.imread(icon_path, cv2.IMREAD_UNCHANGED)
-        if icon is None:
+        loaded_icon = cv2.imread(icon_path, cv2.IMREAD_UNCHANGED)
+        if loaded_icon is None:
             raise FileNotFoundError(
                 f"Error: Couldn't load the icon image from {icon_path}"
             )
-        icon = letterbox_image(
-            image=cast(npt.NDArray[np.uint8], icon),
+        icon_image = letterbox_image(
+            image=cast(npt.NDArray[np.uint8], loaded_icon),
             resolution_wh=self.icon_resolution_wh,
         )
-        return icon
+        return cast(
+            npt.NDArray[np.uint8],
+            np.asarray(icon_image, dtype=np.uint8),
+        )
 
 
 class BlurAnnotator(BaseAnnotator):

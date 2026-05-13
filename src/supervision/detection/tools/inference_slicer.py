@@ -4,7 +4,7 @@ import threading
 import warnings
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, cast
+from typing import Any, TypeAlias, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -19,7 +19,7 @@ from supervision.detection.utils.masks import move_masks
 from supervision.utils.image import crop_image, get_image_resolution_wh
 from supervision.utils.internal import SupervisionWarnings
 
-ImageInput = npt.NDArray[np.uint8] | Image.Image
+ImageInput: TypeAlias = npt.NDArray[np.uint8] | Image.Image
 
 
 def move_detections(
