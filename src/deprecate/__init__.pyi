@@ -3,7 +3,6 @@ from typing import Any, TypeVar
 
 F = TypeVar("F", bound=Callable[..., Any])
 
-
 def deprecated(
     *,
     target: Any = ...,
@@ -11,8 +10,6 @@ def deprecated(
     remove_in: str | None = ...,
     **kwargs: Any,
 ) -> Callable[[F], F]: ...
-
-
 def deprecated_class(
     *,
     target: Any = ...,
@@ -20,6 +17,4 @@ def deprecated_class(
     remove_in: str | None = ...,
     **kwargs: Any,
 ) -> Callable[[type[Any]], type[Any]]: ...
-
-
 def void(*args: Any, **kwargs: Any) -> Any: ...
