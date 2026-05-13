@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 import numpy.typing as npt
-
 from deprecate import deprecated
+
 from supervision.detection.utils.iou_and_nms import box_iou_batch
 
 

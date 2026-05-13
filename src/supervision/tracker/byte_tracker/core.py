@@ -4,8 +4,8 @@ from typing import cast
 
 import numpy as np
 import numpy.typing as npt
-
 from deprecate import deprecated_class
+
 from supervision.detection.core import Detections
 from supervision.detection.utils.iou_and_nms import box_iou_batch
 from supervision.tracker.byte_tracker import matching

@@ -10,9 +10,9 @@ from typing import Any, Literal, cast
 import cv2
 import numpy as np
 import numpy.typing as npt
+from deprecate import deprecated
 from PIL import Image
 
-from deprecate import deprecated
 from supervision.draw.base import ImageType
 from supervision.draw.color import Color, unify_to_bgr
 from supervision.draw.utils import calculate_optimal_text_scale, draw_text

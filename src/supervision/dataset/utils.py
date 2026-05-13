@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 import cv2
 import numpy as np
 import numpy.typing as npt
-
 from deprecate import deprecated, void
+
 from supervision.detection.core import Detections
 from supervision.detection.utils.converters import mask_to_polygons
 from supervision.detection.utils.converters import (

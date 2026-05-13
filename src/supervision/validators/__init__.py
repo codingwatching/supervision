@@ -2,8 +2,8 @@ import warnings
 from typing import Any
 
 import numpy as np
-
 from deprecate import deprecated, void
+
 from supervision.detection.compact_mask import CompactMask
 
 
