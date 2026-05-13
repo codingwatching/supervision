@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import functools
 import inspect
 import os
 import warnings
@@ -38,93 +37,6 @@ if os.getenv("SUPERVISON_DEPRECATION_WARNING") == "0":
     warnings.simplefilter("ignore", SupervisionWarnings)
 else:
     warnings.simplefilter("always", SupervisionWarnings)
-
-
-def warn_deprecated(message: str) -> None:
-    """
-    Issue a warning that a function is deprecated.
-
-    Args:
-        message: The message to display when the function is called.
-    """
-    warnings.warn(message, category=SupervisionWarnings, stacklevel=2)
-
-
-def deprecated_parameter(
-    old_parameter: str,
-    new_parameter: str,
-    map_function: Callable[[Any], Any] = lambda x: x,
-    warning_message: str = "Warning: '{old_parameter}' in '{function_name}' is "
-    "deprecated: use '{new_parameter}' instead.",
-    **message_kwargs: Any,
-) -> Callable[[Any], Any]:
-    """
-    A decorator to mark a function's parameter as deprecated and issue a warning when
-    used.
-
-    Args:
-        old_parameter: The name of the deprecated parameter.
-        new_parameter: The name of the parameter that should be used instead.
-        map_function: A function used to map the value of the old
-            parameter to the new parameter. Defaults to the identity function.
-        warning_message: The warning message to be displayed when the
-            deprecated parameter is used. Defaults to a generic warning message with
-            placeholders for the old parameter, new parameter, and function name.
-        **message_kwargs: Additional keyword arguments that can be used to customize
-            the warning message.
-
-    Returns:
-        A decorator function that can be applied to mark a function's
-            parameter as deprecated.
-
-    Examples:
-        ```pycon
-        >>> from supervision.utils.internal import deprecated_parameter
-        >>> import warnings
-        >>> @deprecated_parameter(
-        ...     old_parameter='old_name',
-        ...     new_parameter='new_name'
-        ... )
-        ... def example_function(new_name=None):
-        ...     return new_name
-        >>> # Calling with new parameter works normally
-        >>> example_function(new_name='value')
-        'value'
-        >>> # Calling with old parameter triggers warning but still works
-        >>> with warnings.catch_warnings(record=True):
-        ...     result = example_function(old_name='deprecated_value')
-        ...     print(result)
-        deprecated_value
-
-        ```
-    """
-
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        @functools.wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            if old_parameter in kwargs:
-                if args and hasattr(args[0], "__class__"):
-                    class_name = args[0].__class__.__name__
-                    function_name = f"{class_name}.{func.__name__}"
-                else:
-                    function_name = func.__name__
-
-                warn_deprecated(
-                    message=warning_message.format(
-                        function_name=function_name,
-                        old_parameter=old_parameter,
-                        new_parameter=new_parameter,
-                        **message_kwargs,
-                    )
-                )
-
-                kwargs[new_parameter] = map_function(kwargs.pop(old_parameter))
-
-            return func(*args, **kwargs)
-
-        return wrapper
-
-    return decorator
 
 
 T = TypeVar("T")

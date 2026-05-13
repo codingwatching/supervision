@@ -1,10 +1,10 @@
+import warnings
 from typing import Any
 
 import numpy as np
 
 from deprecate import deprecated, void
 from supervision.detection.compact_mask import CompactMask
-from supervision.utils.internal import warn_deprecated
 
 
 def validate_xyxy(xyxy: Any) -> None:
@@ -49,7 +49,7 @@ def validate_mask(mask: Any, n: int) -> None:
             + f"{expected_shape}, but got shape {actual_shape}"
         )
     if not np.issubdtype(actual_dtype, bool):
-        warn_deprecated(
+        warnings.warn(
             f"A `Detections` object was created with a mask of type {actual_dtype}."
             " Masks of type other than `bool` are deprecated and may produce unexpected"
             " behavior. Starting from `supervision-0.28.0`, passing a mask with"
@@ -59,7 +59,9 @@ def validate_mask(mask: Any, n: int) -> None:
             " `mask = np.array(..., dtype=bool)` or by converting existing masks with"
             " `mask = mask.astype(bool)` before creating the `Detections` object. If"
             " you did not create the mask manually, please report the issue to the"
-            " `supervision` team."
+            " `supervision` team.",
+            FutureWarning,
+            stacklevel=2,
         )
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -35,7 +36,6 @@ from supervision.dataset.utils import (
     train_test_split,
 )
 from supervision.detection.core import Detections
-from supervision.utils.internal import warn_deprecated
 from supervision.utils.iterables import find_duplicates
 
 
@@ -696,10 +696,12 @@ class ClassificationDataset(BaseDataset):
         self._images_in_memory: dict[str, npt.NDArray[np.uint8]] = {}
         if isinstance(images, dict):
             self._images_in_memory = images
-            warn_deprecated(
+            warnings.warn(
                 "Passing a `Dict[str, np.ndarray]` into `ClassificationDataset` is "
                 "deprecated and will be removed in a future release. Use "
-                "a list of paths `List[str]` instead."
+                "a list of paths `List[str]` instead.",
+                FutureWarning,
+                stacklevel=2,
             )
 
     def _get_image(self, image_path: str) -> npt.NDArray[np.uint8]:

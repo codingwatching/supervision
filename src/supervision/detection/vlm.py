@@ -5,6 +5,7 @@ import base64
 import io
 import json
 import re
+import warnings
 from enum import Enum
 from typing import Any
 
@@ -14,7 +15,6 @@ from PIL import Image
 
 from supervision.detection.utils.boxes import denormalize_boxes
 from supervision.detection.utils.converters import polygon_to_mask, polygon_to_xyxy
-from supervision.utils.internal import warn_deprecated
 from supervision.validators import validate_resolution
 
 
@@ -51,9 +51,11 @@ class LMM(Enum):
 
     @classmethod
     def from_value(cls, value: LMM | str) -> LMM:
-        warn_deprecated(
+        warnings.warn(
             "`LMM` is deprecated since `supervision-0.27.0` and will be removed in "
-            "`supervision-0.31.0`. Use `VLM` instead."
+            "`supervision-0.31.0`. Use `VLM` instead.",
+            FutureWarning,
+            stacklevel=2,
         )
         if isinstance(value, cls):
             return value
